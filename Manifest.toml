@@ -1,0 +1,10 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.12.1"
+manifest_format = "2.0"
+project_hash = "96ab57ab60902bea08cf7e2c20a9f041b048f91c"
+
+[[deps.LR_BUG_Sylvester]]
+path = "."
+uuid = "149d6231-eb5a-4cbf-8ed9-4e2ab481a44a"
+version = "1.0.0-DEV"
