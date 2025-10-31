@@ -1,7 +1,10 @@
 using Accessors
 using LinearAlgebra
+using ConstructionBase
 
-struct TTN{T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
+abstract type AbstractTTN{T,M,N,A,L} end
+
+struct TTN{T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}} <: AbstractTTN{T,M,N,A,Leaves}
     X::A                    # Connection tensor C_τ or basis matrix
     size::NTuple{M,Int}
     leaves::Leaves          # Child nodes τ₁, ..., τₘ
@@ -9,8 +12,8 @@ struct TTN{T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
     tmp::A
 end
 
-@inline Base.eltype(t::TTN{T,M,N,A,L}) where {T,M,N,A,L} = T
-@inline Base.size(t::TTN{T,M,N,A,L}) where {T,M,N,A,L} = t.size
+@inline Base.eltype(t::AbstractTTN{T,M,N,A,L}) where {T,M,N,A,L} = T
+@inline Base.size(t::AbstractTTN{T,M,N,A,L}) where {T,M,N,A,L} = t.size
 
 function TTN(C::AbstractArray{T}, leaves::Leaves) where {T,Leaves <: Tuple}
     s = size(C)
@@ -32,20 +35,20 @@ function TTN(U::AbstractMatrix{T},tmp::AbstractArray{T}) where {T}
     TTN{T,ndims(U),0,typeof(U),Tuple{}}(U, s, (), s[end], tmp)
 end
 
-@inline function isleaf(t::TTN)
+@inline function isleaf(t::AbstractTTN)
     return isempty(t.leaves)
 end
 
-@inline function isroot(t::TTN)
+@inline function isroot(t::AbstractTTN)
     return length(t.leaves) == ndims(t.X)# - 1 && t.r == 1
 end
 
-@inline function tensorize_root(t::TTN)
+@inline function tensorize_root(t::AbstractTTN)
     return reshape(t.X,(size(t.X)...,1))
 end
 
 # Function to print the tree structure
-function print_tree(t::TTN, level::Int = 0)
+function print_tree(t::AbstractTTN, level::Int = 0)
     if isroot(t)
         s = "Root"
     elseif isleaf(t)
@@ -59,19 +62,20 @@ function print_tree(t::TTN, level::Int = 0)
     end
 end
 
-function print_tree(ttns::TTN...)
+function print_tree(ttns::AbstractTTN...)
     for (i,ttn) in enumerate(ttns)
         print("$(i): ")
         print_tree(ttn)
     end
 end
 
-Base.show(io::IO, ::MIME"text/plain", x::TTN{T,M,N,A,L}) where {T,M,N,A,L} = begin
-    println("Structure of $T TTN:")
+Base.show(io::IO, ::MIME"text/plain", x::AbstractTTN{T,M,N,A,L}) where {T,M,N,A,L} = begin
+    name = typeof(x).name.name |> string
+    println("Structure of $T $name:")
     print_tree(x)
 end
 
-function Base.copy(t::TTN{T,M,N,A,Leaves}) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
+function Base.copy(t::AbstractTTN{T,M,N,A,Leaves}) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
     # Copy the connection tensor or basis matrix
     X_copy = copy(t.X)
 
@@ -87,7 +91,7 @@ function Base.copy(t::TTN{T,M,N,A,Leaves}) where {T,M,N,A<:AbstractArray{T,M},Le
     )
 end
 
-function Base.copy(t::TTN{T,M,N,A,Leaves},type) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
+function Base.copy(t::AbstractTTN{T,M,N,A,Leaves},type) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
     # Copy the connection tensor or basis matrix
     X_copy = type.(t.X)
 
@@ -103,7 +107,7 @@ function Base.copy(t::TTN{T,M,N,A,Leaves},type) where {T,M,N,A<:AbstractArray{T,
     )
 end
 
-function copy_structure(t::TTN{T,M,N,A,Leaves},type=nothing) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
+function copy_structure(t::AbstractTTN{T,M,N,A,Leaves},type=nothing) where {T,M,N,A<:AbstractArray{T,M},Leaves<:NTuple{N}}
     isnothing(type) ? type = eltype(t) : nothing
     # Copy the connection tensor or basis matrix
     X_copy = Array{type}(undef,size(t.X))
@@ -120,7 +124,7 @@ function copy_structure(t::TTN{T,M,N,A,Leaves},type=nothing) where {T,M,N,A<:Abs
     )
 end
 
-@inline function contract_TTNs(t1::TTN,t2::TTN)
+@inline function contract_TTNs(t1::AbstractTTN,t2::AbstractTTN)
     if isleaf(t1) == isleaf(t2) == true
         return contract_leaves(t1,t2)
     elseif isleaf(t1) == isleaf(t2) == false
@@ -131,42 +135,31 @@ end
 end
 
 ### optimize this to become non-allocating, MOST IMPORTANT FUNCTION TO OPTIMIZE
-function _contract_TTNs(t1::TTN,t2::TTN)
+function _contract_TTNs(t1::AbstractTTN,t2::AbstractTTN)
     @assert isleaf(t1) == isleaf(t2) == false
     m = length(t1.leaves)
-    #### order should probably be t1,t2 always
     UW = @inbounds ntuple(j -> contract_TTNs(t2.leaves[j],t1.leaves[j]), m)
     ten = t1.tmp
     copyto!(ten,t1.X)
 #     ten = copy(t1.X)
 
     @inbounds for j in 1:m
-#         display(ten)
         ten = n_mode_product(ten,(UW[j]),j)
-#         display(UW[j])
     end
-#     display(ten)
 
     CUW = isroot(t1) ? matricize(reshape(ten,(size(ten)...,1)),0) : matricize(ten,0)
     G = isroot(t1) ? matricize(reshape(t2.X,(size(t2.X)...,1)),0) : matricize(t2.X,0)
 
-#     CUW = matricize(ten,0)
-#     G = matricize(t2.X,0)
-
-#     if !isroot(t1)
-#         @assert first(size(CUW)) == t1.r
-#         @assert first(size(G)) == t2.r
-#     end
     res = CUW * transpose(G)
     return res
 end
 
-@inline function contract_leaves(t1::TTN,t2::TTN)
+@inline function contract_leaves(t1::AbstractTTN,t2::AbstractTTN)
     @assert isleaf(t1) == isleaf(t2) == true "Trees of different shape can't be contracted."
     return t1.X' * t2.X
 end
 
-function count_leaves(t::TTN)
+function count_leaves(t::AbstractTTN)
     if isleaf(t)
         return 1
     else
@@ -174,7 +167,7 @@ function count_leaves(t::TTN)
     end
 end
 
-function orthonormalize_ttn!(root::TTN)
+function orthonormalize_ttn!(root::AbstractTTN)
     # Process each child of the root (root is not orthonormalized)
     for (i, child) in enumerate(root.leaves)
         root = _orthonormalize_recursive!(child, root, i)
@@ -182,7 +175,7 @@ function orthonormalize_ttn!(root::TTN)
     return root
 end
 
-function _orthonormalize_recursive!(node::TTN, parent::TTN, mode::Int)
+function _orthonormalize_recursive!(node::AbstractTTN, parent::AbstractTTN, mode::Int)
     # Recursively process all children of the current node
     for (i, child) in enumerate(node.leaves)
         node = _orthonormalize_recursive!(child, node, i)
@@ -207,7 +200,7 @@ function _orthonormalize_recursive!(node::TTN, parent::TTN, mode::Int)
     return parent
 end
 
-function orth_n_trunc_ttn!(root::TTN,tol=1e-14)
+function orth_n_trunc_ttn!(root::AbstractTTN,tol::Real =1e-14)
      # Process each child of the root (root is not orthonormalized)
     for (i, child) in enumerate(root.leaves)
         root = _orth_n_trunc_recursive!(child, root, i, tol)
@@ -216,7 +209,7 @@ function orth_n_trunc_ttn!(root::TTN,tol=1e-14)
 
 end
 
-function _orth_n_trunc_recursive!(node::TTN, parent::TTN, mode::Int, tol)
+function _orth_n_trunc_recursive!(node::AbstractTTN, parent::AbstractTTN, mode::Int, tol::Real =1e-14)
     # Recursively process all children of the current node
     for (i, child) in enumerate(node.leaves)
         node = _orth_n_trunc_recursive!(child, node, i)
@@ -255,7 +248,7 @@ function _orth_n_trunc_recursive!(node::TTN, parent::TTN, mode::Int, tol)
 end
 
 # Structural compatibility check using tuples
-@inline function check_compatible(ttns::NTuple{N, TTN}) where {N}
+@inline function check_compatible(ttns::NTuple{N, AbstractTTN}) where {N}
     isempty(ttns) && return true
     first_ttn = first(ttns)
 
@@ -269,21 +262,21 @@ end
     end
 end
 
-function add_TTNs(ttns::NTuple{N,TTN},tol=1e-14) where {N}
+function add_TTNs(ttns::NTuple{N,AbstractTTN},tol=1e-14) where {N}
     sum = _add_TTNs(ttns)
 #     display(sum)
     return orth_n_trunc_ttn!(sum,tol)#sum#orthonormalize_ttn!(sum)#
 end
 
-function _add_TTNs(ttns::NTuple{N,TTN}) where {N}
+function _add_TTNs(ttns::NTuple{N,AbstractTTN}) where {N}
     first_ttn = first(ttns)
-
+    constructor = constructorof(typeof(first_ttn))
     if isleaf(first_ttn)
         # Base case: leaf nodes
         @assert all(t -> isleaf(t), ttns) "All TTNs must be leaves or non-leaves together"
         # Horizontal concatenation is already efficient for column-major matrices
         new_X = hcat(ntuple(i -> ttns[i].X, N)...)
-        return TTN(new_X)
+        return constructor(new_X)
     else
         # Recursive case: non-leaf nodes
         @assert all(t -> length(t.leaves) == length(first_ttn.leaves), ttns) "Structure mismatch"
@@ -326,11 +319,18 @@ function _add_TTNs(ttns::NTuple{N,TTN}) where {N}
             block .= ttns[n].X
         end
 
-        return TTN(new_core, core_dims, child_groups, first(core_dims), similar(new_core))
+        return constructor(new_core, core_dims, child_groups, first(core_dims), similar(new_core))
     end
 end
 
-function half_reconstruct(t::TTN)
+function get_leaf_x(t::AbstractTTN, idx::Int)
+    idx < 1 && throw(BoundsError(t, idx))
+    result = _find_leaf(t, idx, 1)
+    result === nothing && throw(BoundsError(t, idx))
+    return result
+end
+
+function half_reconstruct(t::AbstractTTN)
     contracted = t.X
     for (i,leaf) in enumerate(t.leaves)
         leafX = isleaf(leaf) ? leaf.X : transpose(matricize(leaf.X,0))
@@ -339,7 +339,9 @@ function half_reconstruct(t::TTN)
     return contracted
 end
 
-function rank_truncation(t::TTN, tol=1e-8, rs = nothing)
+function rank_truncation(t::AbstractTTN, tol=1e-8, rs = nothing)
+    constructor = constructorof(typeof(t))
+
     m = length(t.leaves)
 
     if isnothing(rs)
@@ -362,11 +364,11 @@ function rank_truncation(t::TTN, tol=1e-8, rs = nothing)
         Pr = @views @inbounds P[:,1:r]
         Ps[i] = Pr
         if isleaf(leaf)
-            new_leaf = TTN(leaf.X*Pr)
+            new_leaf = constructor(leaf.X*Pr)
             @reset t.leaves[i] = new_leaf
         else
             C = n_mode_product(leaf.X,transpose(Pr),0)
-            leaf = TTN(C, leaf.leaves)
+            leaf = constructor(C, leaf.leaves)
             @reset t.leaves[i] = rank_truncation(leaf,tol,rs)
         end
     end
@@ -375,7 +377,7 @@ function rank_truncation(t::TTN, tol=1e-8, rs = nothing)
         C = n_mode_product(C,transpose(Ps[i]),i)
     end
 
-    return TTN(C,t.leaves)
+    return constructor(C,t.leaves)
 end
 
 function rev_cumsum_sq!(c,x)

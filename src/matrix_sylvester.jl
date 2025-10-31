@@ -4,17 +4,11 @@ using FStrings
 using Random
 using SparseArrays
 using LaTeXStrings
-using Distributions
-using CairoMakie , Colors
+using CairoMakie, Colors
 using MakiePublication
 
-macro myshow(exs...)
-    blk = Expr(:block)
-    for ex in exs
-        push!(blk.args, :(print($(string(ex)), " = ")))
-        push!(blk.args, :(display($(esc(ex)))))
-    end
-    return blk
+function mean(A::AbstractArray)
+    return sum(A) / length(A)
 end
 
 function get_makie_figure_size(desired_width_px::Int, desired_height_px::Int; px_per_unit=1.0, dpi=96.0)
@@ -27,35 +21,12 @@ function get_makie_figure_size(desired_width_px::Int, desired_height_px::Int; px
     return (round(Int, width_points), round(Int, height_points))
 end
 
-function rand_mixture(n::Int=1, μ1=0.0, σ1=1.0, μ2=0.0, σ2=1.0, w=0.5)
-    # Input validation for weight
-    if !(0 ≤ w ≤ 1)
-        throw(ArgumentError("Weight w must be between 0 and 1"))
-    end
-
-    # Define the two Gaussian components, truncated to [0, ∞)
-    gaussian1 = Truncated(Normal(μ1, σ1), 0, Inf)
-    gaussian2 = Truncated(Normal(μ2, σ2), 0, Inf)
-
-    # Create a mixture model with weights [w, 1-w]
-    mixture = MixtureModel([gaussian1, gaussian2], [w, 1-w])
-
-    # Sample n values from the mixture
-    return rand(mixture, n)
-end
-
 uniform_eigen(n,smax,smin,s=1) = begin
     samples = (rand(n-2) * (smax - smin)) .+ (smin)
     samples = [smax; samples; smin]
 #     samples = (rand(n) * (smax - smin)) .+ (smin)
 
     samples = s == 1 ? sort(samples) : sort(samples,rev=true)
-    d = sign.(samples)
-    return s .* samples .* d
-end
-
-normal_eigen(n,mean,std,s=1) = begin
-    samples = sort(randn(n) * std) .+ (mean)
     d = sign.(samples)
     return s .* samples .* d
 end
@@ -97,223 +68,87 @@ function smooth_periodic_random_matrix(m::Int, n::Int; max_freq::Int=3, rng=Rand
     return A
 end
 
-#works perfectly for symmetric and antisymmetric cases without constants
-function iterative_sol(n,args=nothing)
+function LR_BUG_Sylvester(;n=2^7,problem="laplacian_periodic",mode=:adaptive,abs_err=nothing,trunc_err=1e-10)
     m = n
     x1 = LinRange(0,4pi,n+1)[begin:end-1]
     x2 = LinRange(0,4pi,m+1)[begin:end-1]
-    k1 = fftfreq(n)*(n)*2pi/(x1[end]+x1[2]-2x1[1])
-    k2 = fftfreq(m)*(m)*2pi/(x2[end]+x2[2]-2x2[1])
-    ttol = 1e-10
+    ttol = trunc_err
 
-    a = 1e-2
-    k = 1/2
-    y1 = @. a*cos(k*x1)
-    y2 = @. a*cos(k*x2)
-    (@isdefined args) ? nothing : args = nothing
-    if isnothing(args)
-        pert = 100
-        y1_coef = rand()*2*pert - pert
-        y2_coef = rand()*2*pert - pert
-        arb(v) = rand()*v + 1
-        a1 = arb(3)
-        a2 = arb(3)
-    else
-        y1_coef, a1, y2_coef, a2 = args
-    end
+    if occursin("laplacian",problem)
+        B = smooth_periodic_random_matrix(n,m,max_freq=3)
+        B = B .- mean(B)
+        rb = rank(B)
 
-    # B = @. 1 + y1_coef*Complex(y1)^a1 + y2_coef*Complex(y2)'^a2 + a*cos(k*x1 + k*x2') |> real
-    # B = @. exp( -(x1-2pi)^2 / 1e-1 - (x2' - 2pi)^2 / 1e-1)
-    B = smooth_periodic_random_matrix(n,m,max_freq=3)
-    # Ub, Sb, Vbt = svd(B)
-    # rb = rank(B)
-    # B = Ub[:,1:rb]*Diagonal(Sb[1:rb])*Vbt[:,1:rb]'
-    # B = @. 1 + y1 + y2'
-    B = B .- mean(B)
-    # Ub, Sb, Vbt = svd(B)
-    # rb = Diagonal(Sb) |> rank
-    # Uhat = reduce(hcat,fft.(eachcol(Ub[:,1:rb])));
-    # Vhat = reduce(hcat,fft.(eachcol(Vbt[:,1:rb])));
-    # B = Uhat*Diagonal(Sb[1:rb])*Vhat'
-
-    rb = rank(B)
-#     @myshow rb
-    # @show (rb,y1_coef,a1,y2_coef,a2)
-
-#     rb = 5
-    # B = rand(n,rb)
-#     B = rand(n,rb)*randn(rb,m) #B*B'
-
-    # U = qr(rand(n,rb)).Q[:,1:rb]#Ub[:,rb+1:2rb] #qr(rand(n,rb)).Q[:,1:rb]#rand(n,rb)#
-    # V = qr(rand(m,rb)).Q[:,1:rb]#Vbt[:,rb+1:2rb] #qr(rand(2n,rb)).Q[:,1:rb]#Vbt[:,rb+1:2rb] #rand(2n,rb)#
-
-    # rb = 5
-    # rb = 13
-
-    D(x,k) = begin
-        reduce(hcat,map(eachcol(x)) do y
-            yk = fft(y)
-            lmul!(Diagonal(-k.^2),yk)
-            return real.(ifft(yk))
-        end)
-    end
-
-    # A1 = AstroVlasov.central_differences(n,x1[2]-x1[1];order=2);
-    # A2 = AstroVlasov.central_differences(m,x2[2]-x2[1];order=2);
-
-    # B = rand(n,m)
-
-    Is = [1:n; 1:n-1; 2:n]; Js = [1:n; 2:n; 1:n-1]; Vs = [fill(-2,n); fill(1, 2n-2)];
-    A1 = sparse(Is,Js,Vs)
-#     A1[1,end] = 1
-#     A1[end,1] = 1
-    A2 = copy(A1) ./ x2[2]^2
-    A1 = A1 ./ x1[2]^2
-
-
-    # A1 = ifft(I(n),1) * Diagonal(-k1.^2) * fft(I(n),1) #|> real
-    # A2 = ifft(I(m),1) * Diagonal(-k2.^2) * fft(I(m),1) #|> real
-    # A1 = Diagonal(-k1.^2)
-    # A2 = Diagonal(-k2.^2)
-    # X = reshape( (kron(I(m),A1) + kron(A2', I(n)) ) \ vec(B), n,m)
-    # r = rank(X)
-    # @show r
-#     l1 = max(n,m) #max(n,m)
-#     l2 = -div(l1,2)
-#     s1 = 1
-#     s2 = 1#0.5
-#     r = 1
-#     w = 0.5
-    # eigenval_gen(n,l,s=-1) = s*LinRange(1,n,n) .+ (s*l)
-    # eigenval_gen(n,l,s=-1) = sort(s * rand(n) * l) .+ (s*l)
-#     eigenval_gen(n,l,s=-1) = begin
-#         l == 0 ? l = 0.1 : nothing
-#         samples = sort(randn(n) / sqrt(abs(l))) .+ (s*l)
-#         d = sign.(samples)
-#         return s .* samples .* d
-#     end
-#
-    # eigenval_gen(n,l) = -rand_mixture(n,l,sqrt(l),1,1,w)
-#     iter = 0
-#     my_normalize(p) =
-#              reduce(hcat,map(x->x/norm(x),eachcol(p)))
-#     while true
-#         iter += 1
-
-        # d1 = collect(1:n)./l .- l
-        # d2 = collect(1:m)./l .- l
-
-#         d1 = eigenval_gen(n,l1,s1)#sort(-rand(n) * l)# .- l)#,rev=true)
-#         d2 = eigenval_gen(m,l2,s2)#sort(-rand(n) * l)# .- l)#,rev=true)
-
-        # d1 = (@. -100 / (1 + exp( 0.5*(x1 - x1[n÷2]) )) - 1)
-        # d2 = (@. -100 / (1 + exp( 0.5*(x2 - x2[n÷2]) )) - 1)
-
-#     indices = [(i, j) for (i, a) in pairs(d1), (j, b) in pairs(d2) if abs(a + b) < 1e-14]
-
-#     while length(indices) > 1
-#         d1 = eigenval_gen(n,l1,s1)#sort(-rand(n)*4,rev=true)
-#         d2 = eigenval_gen(m,l2,s2)#sort(-rand(n)*4,rev=true)
-#         indices = [(i, j) for (i, a) in pairs(d1), (j, b) in pairs(d2) if abs(a + b) < 1e-14]
-#     end
-#     p1 = my_normalize(rand(n,n))
-#     p1inv = pinv(p1)
-#     p2 = my_normalize(rand(m,m))
-#     p2inv = pinv(p2)
-#     A1 = p1inv * Diagonal(d1) * p1
-#     A2 = p2inv * Diagonal(d2) * p2
-smin = 1
-smax = 2
-spec_range = 1
-dist = 10
-#     A1 = generate_matrix(n,(smax,smin,-1),uniform_eigen)
-#     A2 = generate_matrix(m,(smax+dist,smin+dist),uniform_eigen)
-#     A1 = generate_matrix(n,(smax+dist+spec_range,smax+dist),uniform_eigen)
-#     A2 = generate_matrix(m,(smax,smin,-1),uniform_eigen)
-
-#     sA = svd(Matrix(A1)).S
-#     sB = svd(Matrix(A2)).S
-#     val = [x+y for x in eigen(Matrix(A1)).values, y in eigen(Matrix(A2)).values] |> vec
-#     eig_range = (round(minimum(val),digits=4),round(maximum(val),digits=4))
-#     condD = (sA[1]+sA[2])/(sA[end] + sB[end])
-
-    P =  kron(I(n),A1) + kron(A2, I(n))
-    smax = svdsolve(P,5,:LR)[1][1]
-    smin = svdsolve(P,5,:SR)[1][1]
-    cond = smax/smin
-    @show cond
-    throw("Stop")
-#     X = sylvester(Matrix(A1),Matrix(A2)',-B)
-    X = reshape( P  \ vec(B), n,n)
-        s = svd(X).S# .< 1e-10)
-        tol = (ttol*norm(s))^2
-        r = findfirst(x -> x < tol, reverse(cumsum(reverse(s.^2))))# - 1
-        r = isnothing(r) ? length(s) : r - 1
-        if r < n ÷ 2
-            @show r
+        Is = [1:n; 1:n-1; 2:n]; Js = [1:n; 2:n; 1:n-1]; Vs = [fill(-2,n); fill(1, 2n-2)];
+        A1 = sparse(Is,Js,Vs)
+        if occursin("periodic",problem)
+            A1[1,end] = 1
+            A1[end,1] = 1
+        elseif occursin("dirichlet",problem)
+            nothing
+        else
+            error("Unknown problem_type: $problem_name. Choose from \"laplacian_periodic\", \"laplacian_dirichlet', or \"random\"")
         end
+        A2 = copy(A1) ./ x2[2]^2
+        A1 = A1 ./ x1[2]^2
 
-#         @show (dist, eig_range,condD,r)
+    elseif problem == "random"
+        rb = 7
+        B = rand(n,rb)*rand(rb,m) #B*B'
+        smin = 1
+        smax = 2
+        spec_range = 1
+        dist = 10
+        A1 = generate_matrix(n,(smax+dist+spec_range,smax+dist),uniform_eigen)
+        A2 = generate_matrix(m,(smax,smin,-1),uniform_eigen)
+    else
+        error("Unknown problem_type: $problem_name. Choose from \"laplacian_periodic\", \"laplacian_dirichlet', or \"random\"")
+    end
+    println("rb = $(rb)")
 
-#     X = sylvester(Matrix(A1),Matrix(A2)',-B)
-    # A = kron(I(m),A1) + kron(A2,I(n))
-    # X = similar(B)
-    # x = vec(X)
-    # x .= pinv(A) * vec(B)
+    X = sylvester(Matrix(A1),Matrix(A2)',-B)
     Ux,Sx,Vx = svd(X)
-    tol = (ttol*norm(Sx))^2
+    tol = (trunc_err*norm(Sx))^2
     r = findfirst(x -> x < tol, reverse(cumsum(reverse(Sx.^2))))# - 1
     r = isnothing(r) ? length(Sx) : r - 1
+    if r < n ÷ 2
+        @show r
+    end
 
-    R = Ux[:,r+1:end]*Diagonal(Sx[r+1:end])*Vx[:,r+1:end]'
-    trunc_err = norm(A1*R + R*A2')
+    Xtr = Ux[:,1:r]*Diagonal(Sx[1:r])*Vx[:,1:r]'
+    abs_err = norm(A1*Xtr + Xtr*A2' - B)
 
-    # U = reduce(hcat,fft.(eachcol(Ub[:,rb+1:2rb])));
-    # V = reduce(hcat,fft.(eachcol(Vbt[:,rb+1:2rb])));
-#     r = 7
-    U = qr(rand(n,r)).Q[:,1:r]#Ub[:,rb+1:2rb] #qr(rand(n,rb)).Q[:,1:rb]#rand(n,rb)#
-    V = qr(rand(m,r)).Q[:,1:r]#Vbt[:,rb+1:2rb] #qr(rand(2n,rb)).Q[:,1:rb]#Vbt[:,rb+1:2rb] #rand(2n,rb)#
+    r = rb
+    U = qr(rand(n,r)).Q[:,1:r]
+    V = qr(rand(m,r)).Q[:,1:r]
+    ru = rv = r
 
-    # P = kron(I(m),A1) + kron(A2,I(n)) |> Matrix
-    # @myshow sqrt.(eigen(P'*P).values)
-    # small_lambda = eigs(P, which=:SM, ritzvec=false)[1]
-    # large_lambda = eigs(P, which=:LM, ritzvec=false)[1]
-    # @myshow small_lambda
-    # @myshow large_lambda
-    # try
-
-    # if l >= 2
-    #     P = kron(I(m),A1) + kron(A2,I(n))
-    #     sigma_min = eigs(P'*P; which=:SM,ritzvec=false, nev=1)[1][1] |> sqrt
-    #     @show sigma_min
-    # end
-    # catch e
-    #     nothing
-    # end
-
-    # ΔV = Vx[:,1:r] - V[:,1:r]
-    # @show norm(ΔV)
-    # @myshow svd(ΔV).S[1]
-    K = similar(U)
-    L = similar(V)
-    Uold = similar(U)
-    Vold = similar(V)
-
-    vecK = vec(K)
-    vecL = vec(L)
-    ru = size(K,2)
-    rv = size(L,2)
-    # coef = kron(I(ru),A)
-    S = Array{eltype(U)}(undef,ru,rv)
-    vecS = vec(S)
     Q1t = U' * A1 * U
     Q2t = V' * A2 * V
     BV = B*V
     BtU = B'*U
 
-    errs = []
-    errsU = []
-    errsV = []
+    errs = Float64[]
+
+    ##### Compute error of random initial guess ######
+    coef_K = kron(I(rv),A1) + kron(Q2t, I(n))
+    K = reshape(coef_K \ vec(BV),n,ru)
+    coef_L = kron(I(ru),A2) + kron(Q1t, I(m))
+    L = reshape(coef_L \ vec(BtU),m,rv)
+    U = qr(K) |> Matrix
+    V = qr(L) |> Matrix
+
+    Q1t = U' * A1 * U
+    BtU = B'*U
+    Q2t = V' * A2 * V
+    BV = B*V
+    UtBV = U' * BV
+
+    coef_S = kron(I(rv),Q1t) + kron(Q2t,I(ru))
+    S = reshape(pinv(coef_S) * vec(UtBV),ru,rv)
+    Y = U*S*V'
+    err = norm(A1*Y + Y*A2'- B)
+    push!(errs,err)
 
     max_iter = 10
     p = Progress(max_iter)
@@ -325,55 +160,21 @@ dist = 10
         BtU = B'*U
 
         coef_K = kron(I(rv),A1) + kron(Q2t, I(n))
-        # vecK .= coef_K \ vec(BV)
-#         K = reshape(pinv(coef_K) * vec(BV),n,ru)
         K = reshape(coef_K \ vec(BV),n,ru)
-        #         K = sylvester(A1,Q2t',-BV)
-#         @show size(K)
         coef_L = kron(I(ru),A2) + kron(Q1t, I(m))
-#         L = reshape(pinv(coef_L) * vec(BtU),m,rv)
         L = reshape(coef_L \ vec(BtU),m,rv)
-#         L = sylvester(A2,Q1t',-BtU)
-        # copyto!(Uold,U)
-        Uold = copy(U)
-        # U,Ru = qr([K U])
-        # ru = min(2ru,size(U,2))
-        # U = U[:,1:ru]
-        U,Ru = qr(K)#[K U])
-        U = U[:,1:ru]#2ru]
-#         @show size(U)
 
-
-        # vecL .= coef_L \ vec(BtU)
-        # copyto!(Vold,V)
-
-        Vold = copy(V)
-        # V, Rv = qr([L V])
-        # rv = min(2rv,size(V,2))
-        # V = V[:,1:rv]
-        V, Rv = qr(L)#[L V])
-        V = V[:,1:rv]#2rv]
-
-
-        errU = norm(Ru)#U'*Uold)
-        errV = norm(Rv)#V'*Vold)
-        err1 = norm(B'*U)
-        err2 = norm(B*V)
-        err3 = norm(U'*B*V)
-        push!(errsU,(errU,err1))
-        push!(errsV,(errV,err2))
-        # if abs(err1 - errsU[i][2]) < 1e-10 && abs(err2 - errsV[i][2]) < 1e-10
-        #     break
-        # end
-
-    #     next!(p)
-    #     if errU < 1e-8 && errV < 1e-8
-    #         break
-    #     end
-
-    # end
-        # M = U1' * U
-        # N = V1' * V
+        if mode == :fixed
+            U, Ru = qr(K)#[K U])
+            V, Rv = qr(L)#[L V])
+        elseif mode == :adaptive
+            U, Ru = qr([K U])
+            V, Rv = qr([L V])
+            ru = rank(Ru)
+            rv = rank(Rv)
+        end
+        U = U[:,1:ru]
+        V = V[:,1:rv]
 
         Q1t = U' * A1 * U
         BtU = B'*U
@@ -381,189 +182,105 @@ dist = 10
         BV = B*V
         UtBV = U' * BV
 
-        # coef_S = kron(I(rv),Q1t) + kron(Q2t,I(ru))
-        # S = reshape(coef_S \ vec(UtBV),ru,rv)
-        # r = ru
         coef_S = kron(I(rv),Q1t) + kron(Q2t,I(ru))
         S = reshape(pinv(coef_S) * vec(UtBV),ru,rv)
         P,Σ,Q = svd(S)
-        # s = norm(Σ)
-        # tol = ttol*s
-        # tolsq = (tol)^2
-        # r = findfirst(x -> x < tolsq, reverse(cumsum(reverse(Σ.^2))))# - 1
-        # r = isnothing(r) ? length(Σ) : r - 1
-        r = length(Σ)
+
+        if mode == :fixed
+            r = length(Σ)
+         elseif mode == :adaptive
+            s = norm(Σ)
+            tol = ttol*s
+            tolsq = (tol)^2
+            r = findfirst(x -> x < tolsq, reverse(cumsum(reverse(Σ.^2))))# - 1
+            r = isnothing(r) ? length(Σ) : r - 1
+        end
         U = U*P[:,1:r]
         V = V*Q[:,1:r]
         S = Diagonal(Σ[1:r])
         ru = rv = r
         Y = U*S*V'
-        # Y .-= mean(Y)
         err = norm(A1*Y + Y*A2'- B)
-        # err2 = norm(Y-f)
-        push!(errs,(err,err3))
+        push!(errs,err)
 
-        if err < trunc_err || (i>1 && abs(err-errs[i-1][1]) < tol)
+        if err < abs_err || (i>1 && abs(err-errs[i]) < abs_err)
             break
         end
-        # sleep(0.1)
-        next!(p, showvalues=[(:err,err),(:r,r),(:mean,mean(Y))],valuecolor=:yellow)
+
+        next!(p, showvalues=[(:err,err),(:r,r)],valuecolor=:yellow)
     end
     finish!(p)
-    return (U,S,V), (errs,errsU,errsV), B, (A1,A2), X
+    return (U,S,V), errs, B, (A1,A2), X
 end
 
-test_sol(n) = begin
-    Random.seed!(44)
+run_example(;n=2^7,problem="laplacian_periodic",mode=:adaptive) = begin
+    Random.seed!(42)
+    n_elems_sq = n
+    sol,errs,B,As,X = LR_BUG_Sylvester(n=n,problem=problem,mode=mode);
 
-    pert = 100
-    y1_coef = rand()*2*pert - pert
-    y2_coef = rand()*2*pert - pert
-    arb(v) = rand()*v + 1
-    a1 = arb(4)
-    a2 = arb(4)
-
-    args = (y1_coef,a1,y2_coef,a2)
-    a = y1_coef
-    b = y2_coef
-    e1 = nothing
-    e2 = nothing
-    err1 = nothing
-    err2 = nothing
-    B = nothing
-    As = nothing
-    sol1 =nothing
-    X = nothing
-    try
-        sol1,err1,B,As,X = iterative_sol(n);
-    catch e1
-        println("Iterative failed")
-    end
-    try
-        error("No")
-        sol2,err2 = gradient_flow(n,args)
-    catch e2
-        println("Gradient flow failed")
-    end
-    # (isnothing(err1) || isnothing(err2)) && throw("One of the methods failed.")
-    # errU = err[2]
-    # errV = err[3]
-    # err = err[1]
-    # display(err);# err[err .> normB] .= NaN;
-
-
-    dpi = 92
-    colors = RGB.(MakiePublication.wong())
-    set_theme!(theme_latexfonts(), palette=(color = colors,))
-    fig = Figure(fontsize=24,size=get_makie_figure_size(1024,420;dpi=dpi))#,px_per_unit=1)
-    fig1 = fig[1,1]
-    s = ~isnothing(err1) + ~isnothing(err2)
-    if s == 0
-        throw("Neither method worked.")
-    end
-    errU = err1[2]
-    errV = err1[3]
-    err1 = err1[1]
-
-    sol = sol1
     Y = sol[1]*sol[2]*sol[3]'
-    @show rank(Y)
 
     U,sX,V = svd(X)
     sY = diag(sol[2])
     r = length(sY)
-#     R = U[:,r+1:end] * Diagonal(sX[r+1:end]) * V[:,r+1:end]'
-    @show sX[1:r]
-    @show abs.(sX[1:r] .- sY) #./ sX[1:r]
-    # R = fft(U[:,r+1:end],1) * Diagonal(sX[r+1:end]) * fft(V[:,r+1:end],1)'
+    Xtr = U[:,1:r]*Diagonal(sX[1:r])*V[:,1:r]'
 
-    # err_n = norm(X-Y)
-    # err_R = norm(R)
     R = X - Y
-    trunc_error = norm(As[1]*R + R*As[2]')
-    abs_error = first.(err1)[end]
-    @show trunc_error
-    println("abs. err. = ",norm(As[1]*Y + Y*As[2]' - B))
-    @show abs(trunc_error-abs_error)
-    @show norm(X-Y)
-    @show norm(R)
+    residual_error = norm(As[1]*R + R*As[2]')
+    trunc_err = norm(As[1]*Xtr + Xtr*As[2]' - B)
 
-    # ax0 = Label(fig[0,1:2],text=f"B is hermitian",#f"B = 1 + {y1_coef:.3f}*a*cos(kx1)^{a1:.3f} + {y2_coef:.3f}*a*cos(kx2')^{a2:.3f} + a*sin(x1+x2')",
-    #  font= (:bold))
-    n = length(errU)
+    n = length(errs)
     N = n > 10 ? div(n,10) : 1
     v = 0:N:n |> collect
-    v[1] = 1
-#     Label(fig[0,1:2],text="BUG Sylvester Solver",font=:bold)
-    if ~isnothing(err1)
-        ax1 = Axis(fig1[1,1],xlabel="Iterations",ylabel="Error",yscale=log10,xticks = (v, string.(v)))
-        scatterlines!(ax1,1:length(err1),first.(err1),label=L"\Vert A_1 Y + Y A_2^T - B \Vert_F")
-        hlines!(ax1,trunc_error,label=L"\Vert A_1 R + R A_2^T \Vert_F", color=colors[3])
-        axislegend(ax1)
-    end
-    if ~isnothing(err2)
-        ax2 = Axis(fig1[1,2],title="Gradient flow",xlabel="iterations",ylabel="error",yscale=log10)
-        scatterlines!(ax2,1:length(err2),err2,label="Abs.Error")
-        axislegend(ax2)
-    end
-    #save("results/test_bed/error.png",fig,dpi=144)
-    # Y = Y .- mean(Y)
 
-    # @myshow sum(abs2.(imag(Y)))
-    # Y = real(Y)
-    # global wtf = sol
+    dpi = 92
+    colors = RGB.(MakiePublication.seaborn_colorblind())
+    set_theme!(theme_latexfonts(), palette=(color = colors,))
+    fig = Figure(fontsize=24,size=get_makie_figure_size(1024,420;dpi=dpi))#,px_per_unit=1)
+    fig1 = fig[1,1:2]
 
-#     eigen1 = eigen(As[1]).values |> real
-#     eigen2 = eigen(As[2]).values |> real
+    Label(fig[2,1:2],text="Iterations",padding=(0,0,0,0))
+    ax1 = Axis(fig1,ylabel="Error",yscale=log10,xticks = (v, string.(v)))
+    scatterlines!(ax1,0:n-1,errs/n_elems_sq,label=L"\Vert \mathcal{L}(Y\,)-B \Vert_{sF}")
+    hlines!(ax1,trunc_err/n_elems_sq,label=L"\Vert \mathcal{L}(X_r\,)-B \Vert_F", color=colors[4])
+    hlines!(ax1,residual_error/n_elems_sq,label=L"\Vert \mathcal{L}(R\,) \Vert_F", color=colors[5])
+    axislegend(ax1)
 
-#     fig4 = fig[2,2]
-#     ax41 = Axis(fig4[1,1], title=L"\mathrm{Eigenvalues\,\, of\,\, }A_1")
-#     ax42 = Axis(fig4[1,2], title=L"\mathrm{Eigenvalues\,\, of\,\, }A_2")
-#     hist!(ax41,eigen1,label=L"\lambda(A_1)")
-#     hist!(ax42,eigen2,label=L"\lambda(A_2)")
-
-#     fig2 = fig[1,2]#Figure()
-#     ax21 = Axis(fig2[1,1],title="Num. Sol.")
-#     hm1 = heatmap!(ax21,Y)
-#     Colorbar(fig2[1,1][1,2],hm1)
-#     ax22 = Axis(fig2[1,2],title="Exact Sol.")
-#     hm2 = heatmap!(ax22,X)
-#     Colorbar(fig2[1,2][1,2],hm2)
     n = minimum(size(Y))
     get_exp_base_10(x) = round(Int,log10(x))
 
     if get_exp_base_10(n)-get_exp_base_10(r) >= 2
         xticks =  [min(r,div(n,2)),max(r,div(n,2)),n]
     elseif r < 10
-        xticks =  [0,r,div(n,2),n]
+        xticks =  [r,div(n,2),n]
     elseif abs(r-div(n,2)) <= 5
-        xticks =  [0,r,n]
+        xticks =  [1,r,n]
     else
-        xticks = [0,min(r,div(n,2)),max(r,div(n,2)),n]
+        xticks = [1,min(r,div(n,2)),max(r,div(n,2)),n]
     end
-    ax21 = Axis(fig[1,2], ylabel=L"\sigma_k\, /\sigma_1",yscale=log10,xlabel="Index of singular value", xticks=xticks)
+    fig2 = fig[1,3:5]
+    Label(fig[2,3:5],text="Index of singular value", padding=(0,0,0,0))
+    ax21 = Axis(fig2[1,1], ylabel=L"\sigma_k\, /\sigma_1",yscale=log10, xticks=xticks)
     scatterlines!(ax21,sX ./ sX[1],label="Exact Sol.",markersize=14)
-    scatterlines!(ax21,sY ./ sY[1],label="Num. Sol.",markersize=6)#,marker=:xcross)
+    scatterlines!(ax21,sY ./ sY[1],label="Num. Sol.",markersize=14,marker='⨯')
     ttol=1e-10*norm(sX)
     hlines!(ax21,ttol/sX[1],label=L"\vartheta", color=colors[3])
     xticks = [1, div(r,2), r]
-    ax22 = Axis(fig[1,3], ylabel=L"|\sigma_X - \sigma_Y\,|",yscale=log10,xlabel="Index of singular value", xticks=xticks)
+    ax22 = Axis(fig2[1,2], ylabel=L"|\sigma_X - \sigma_Y\,|",yscale=log10, xticks=xticks)
     scatterlines!(ax22,abs.(sX[1:r].-sY),markersize=14)
-    hlines!(ax22,ttol,label=L"\vartheta", color=colors[3])
-    #     vlines!(ax2,r, color=:gray,label=latexstring("r=$(r)"))
-
-    axislegend(ax22)
     axislegend(ax21)
+    rowgap!(fig1.layout, 1, 5)
+    rowgap!(fig2.layout, 1, 5)
     display(fig)
-    save("/home/vretinaris/AstroVlasov.jl/results/low_rank_sylvester_laplacian.eps",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
+    save("results/matrix_$problem.pdf",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
 
+end
 
-    # display(GLMakie.Screen(),fig1)
-    # display(GLMakie.Screen(),fig2)
-    # println()
-    # println()
-    # println()
-    # println()
-    # return (errU,errV)
-    # return fig
+function run_all_matrix()
+    problem_set = ["random", "laplacian_dirichlet", "laplacian_periodic"]
+
+    for problem in problem_set
+        println(problem)
+        run_example(n=2^7,problem=problem)
+    end
 end

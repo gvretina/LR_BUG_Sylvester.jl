@@ -1,6 +1,5 @@
 using LinearAlgebra
 using LoopVectorization
-using StaticArrays
 
 @inline function _tuple_prod(a, nonmodes::NTuple{M,Int}) where {M}
     return prod(a[i] for i in nonmodes)
@@ -213,6 +212,35 @@ function n_mode_product(X::AbstractArray{T}, U::AbstractMatrix, n::Int) where T
 end
 
 
+# function n_mode_product!(Y::AbstractArray, X::AbstractArray, U::AbstractMatrix, n::Int)
+#     dims = size(X)
+#     N = length(dims)
+# #     n = n + 1
+#     # Check that the inner dimension matches: dims[n] must equal the number of columns of U.
+#     p = size(U)
+
+#     if n == 0
+#         mode = last(ndims(X))
+#     else
+#         mode = n
+#     end
+
+#     @assert dims[mode] == p[2] "Dimension mismatch: size(X, n) = $(dims[mode]) must equal size(U,2) = $(p[2])."
+
+#     # Create a lazy matricized view of X along mode n.
+#     Xmat = matricize(X, mode)  # This returns a ModeNMatrix which is an AbstractMatrix without allocating new memory.
+#     Ymat = matricize(Y, mode)
+#     # Compute the matrix product. This uses BLAS and no extra allocation is needed for Xmat.
+#     tmul!(Ymat,U,Xmat)  # Ymat has size (size(U,1), prod(dims)/dims[n])
+
+# #     newdims = ntuple(i -> i == n ? size(U, 1) : dims[i], N)
+#     newdims = get_tuple(Val(N),(i,n,U,dims) -> i == n ? size(U, 1) : (@inbounds dims[i]),mode,U,dims)
+
+#     # Create a lazy tensorized view from the matricized result.
+#     Y = tensorize(Ymat, mode, newdims)
+#     return Y
+# end
+
 function tucker_hosvd(X; tol=1e-8)
     ndims_X = ndims(X)
     U = Vector{Matrix{eltype(X)}}(undef, ndims_X)
@@ -240,4 +268,60 @@ function tucker_hosvd(X; tol=1e-8)
     end
 
     return G, U
+end
+
+function symmetric_hosvd(X; tol=1e-8)
+    # Check if X is symmetric across all modes
+    if !is_symmetric(X)
+        @warn "Input is not symmetric, falling back to typical HOSVD"
+        return tucker_hosvd(X; tol=tol)
+    end
+
+    ndims_X = ndims(X)
+    U = Vector{Matrix{eltype(X)}}(undef, ndims_X)
+    
+    # Compute SVD on the first mode only (since it's symmetric)
+    F = svd(matricize(X, 1))
+    tol_sq = tol^2
+    cumulative = cumsum(reverse(abs2.(F.S)))
+    r = findfirst(cumulative .>= tol_sq * sum(abs2, F.S))
+    r = isnothing(r) ? length(F.S) : length(F.S) - r + 1
+    
+    # Force the symmetry by setting U[1] = U[2] = F.U[:, 1:r]
+    U[1] = F.U[:, 1:r]
+    U[2] = F.U[:, 1:r]
+    
+    # For higher dimensions, use the same U for all modes
+    for n in 3:ndims_X
+        U[n] = U[1]
+    end
+
+    # Compute core tensor using in-place operations
+    G = copy(X)
+    for n in 1:ndims_X
+        U_n = U[n]
+        G = n_mode_product(G, transpose(U_n), n)
+    end
+
+    return G, U
+end
+
+# Helper function to check if the tensor is symmetric
+function is_symmetric(X)
+    for perm in permutations(1:ndims(X))
+        if !(X ≈ permutedims(X, perm))
+            return false
+        end
+    end
+    return true
+end
+
+
+macro myshow(exs...)
+    blk = Expr(:block)
+    for ex in exs
+        push!(blk.args, :(print($(string(ex)), " = ")))
+        push!(blk.args, :(display($(esc(ex)))))
+    end
+    return blk
 end

@@ -1,10 +1,10 @@
 using LinearSolve
 using Random
 using CairoMakie, MakiePublication, Colors
-using LaTeXStrings
 using SparseArrays
 include("tensor.jl")
 include("TTN.jl")
+include("TTNO.jl")
 
 function remove_at(a::AbstractVector{T}, idx::Int) where T
     n = length(a)
@@ -27,7 +27,8 @@ function complementary_size(A::AbstractArray, skip_dim::Int)
     return total
 end
 #### RETHINK OF ORDER OF BASIS MATMUL AND TRANSPOSES
-function tucker_sylv(op,rhs,rs=nothing,tol=1e-6)
+function tucker_sylv(operator_tuple,rhs,rs=nothing,abs_tol=1e-6, trunc_tol=1e-10)
+    op, ttno = operator_tuple
     if isnothing(rs)
         r_min = 1
         r_max = 100
@@ -42,11 +43,8 @@ function tucker_sylv(op,rhs,rs=nothing,tol=1e-6)
         @reset t.leaves[i].X = Matrix(qr(rand(n,r)).Q)#[:,r]
     end
     t.X .= rand(size(t.X)...)
-    ts = ntuple(n_leaves) do k
-        @set t.leaves[k].X = op[k]*t.leaves[k].X
-    end
 
-    lhs = add_TTNs(ts)
+    lhs = apply_TTNO(ttno,t)
     err = add_TTNs((lhs, (@set rhs.X = -rhs.X)))
     F_norm_err = contract_TTNs(err,err) |> only |> sqrt
     errs = []
@@ -64,7 +62,7 @@ function tucker_sylv(op,rhs,rs=nothing,tol=1e-6)
     prev_err = errs[1]
     while iter < max_iter
         iter += 1
-        for k in 1:n_leaves
+        Base.Threads.@threads for k in 1:n_leaves
             r = size(t.X,k)
             if r > ¬(t.X,k)
                 throw("Nope")
@@ -81,25 +79,18 @@ function tucker_sylv(op,rhs,rs=nothing,tol=1e-6)
         M .= [sparse(Uhats[i]'*op[i]'*Uhats[i]) for i in 1:n_leaves]
         N .= [sparse(rhs.leaves[i].X'*Uhats[i]) for i in 1:n_leaves]
         t = solve_core(t_aug,rhs,M,N)
-        t = rank_truncation(t,1e-10)
+        t = rank_truncation(t,trunc_tol)
         M .= [sparse(t.leaves[i].X'*op[i]'*t.leaves[i].X) for i in 1:n_leaves]
         N .= [sparse(rhs.leaves[i].X'*t.leaves[i].X) for i in 1:n_leaves]
 
-        ts = ntuple(n_leaves) do k
-            @set t.leaves[k].X = op[k]*t.leaves[k].X
-        end
-
-        lhs = add_TTNs(ts)
-        err = add_TTNs((lhs, (@set rhs.X = -rhs.X)))
+        lhs = apply_TTNO(ttno,t)
+        err = add_TTNs((lhs, (@set rhs.X = -rhs.X)),trunc_tol)
         F_norm_err = contract_TTNs(err,err) |> only |> sqrt
-        # #@myshow F_norm_err
         append!(errs,F_norm_err)
-        # r_tol = tol*norm(t.X)
-        if F_norm_err <= tol
+        if F_norm_err <= abs_tol
             println("first")
-            # println(r_tol)
             break
-        elseif abs2(prev_err-F_norm_err) < 1e-10
+        elseif abs2(prev_err-F_norm_err) <= abs_tol
             println("second")
             break
         end
@@ -146,7 +137,7 @@ function solve_basis(t,rhs,Ak,Qk,M,N,k,rs=nothing)
     # Yk = Array{eltype(t)}(undef, size(Uk,1), r2)
     # x = vec(Yk)
     #do this elsewhere too, simpleGMRES might be better
-    u = solve(LinearProblem(A,b, UMFPACKFactorization())).u
+    u = solve(LinearProblem(A,b)).u
     Yk = reshape(u,size(Uk,1),:)
     # #@myshow size(u)
     # #@myshow size(x)
@@ -185,7 +176,7 @@ function solve_core(t,rhs,M,N)
     C = Array{eltype(t)}(undef,rs...)
     x = vec(C)
 
-    x .= solve(LinearProblem(A,b, UMFPACKFactorization())).u
+    x .= solve(LinearProblem(A,b,)).u
     # x .= A \ b
 
     return TTN(C, t.leaves)
@@ -245,15 +236,15 @@ end
 my_normalize(p) =
     reduce(hcat,map(x->x/norm(x),eachcol(p)))
 
-function example(;n=2^7,d=3,problem_name)
-    Random.seed!(1234)
+function example(;n=2^7,d=3,problem_name="laplacian_periodic")
+    Random.seed!(42)
     if problem_name == "laplacian_periodic"
         xmin = 0
         xmax = 4π
         x = LinRange(xmin, xmax, n+1)[begin:end-1]
         dx = x[2] - x[1]
         B = smooth_periodic_random_array(ntuple(i->n, d), x)
-        mean = sum(B) / prod(size(B))
+        mean = sum(B) / length(B)
         B .= B .- mean
 
         Is = [1:n; 1:n-1; 2:n]
@@ -266,6 +257,7 @@ function example(;n=2^7,d=3,problem_name)
         Ds = ntuple(i->D, d)
         Cb, Ub = tucker_hosvd(B; tol=1e-12)
         B_TTN = TTN(Cb, ntuple(i->TTN(Ub[i]), d))
+        Sylv_TTNO = Sylvester_TTNO(B_TTN,Ds)
 
     elseif problem_name == "laplacian_dirichlet"
         xmin = 0
@@ -273,19 +265,18 @@ function example(;n=2^7,d=3,problem_name)
         x = LinRange(xmin, xmax, n+1)[begin:end-1]
         dx = x[2] - x[1]
         B = smooth_periodic_random_array(ntuple(i->n, d), x)
-        mean = sum(B) / prod(size(B))
+        mean = sum(B) / length(B)
         B .= B .- mean
 
         Is = [1:n; 1:n-1; 2:n]
         Js = [1:n; 2:n; 1:n-1]
         Vs = [fill(-2, n); fill(1, 2n-2)]
         A1 = sparse(Is, Js, Vs)
-#         A1[1, end] = 1
-#         A1[end, 1] = 1
         D = A1 / dx^2
         Ds = ntuple(i->D, d)
         Cb, Ub = tucker_hosvd(B; tol=1e-12)
         B_TTN = TTN(Cb, ntuple(i->TTN(Ub[i]), d))
+        Sylv_TTNO = Sylvester_TTNO(B_TTN,Ds)
 
     elseif problem_name == "random"
         spec_range = 1
@@ -294,6 +285,7 @@ function example(;n=2^7,d=3,problem_name)
         r = 7
         B_TTN = TTN(rand(fill(r, d)...), ntuple(i->TTN(Matrix(qr(rand(n, r)).Q)), d))
         B = half_reconstruct(B_TTN)
+        Sylv_TTNO = Sylvester_TTNO(B_TTN,Ds)
 
     else
         error("Unknown problem_type: $problem_name. Choose from \"laplacian_periodic\", \"laplacian_dirichlet', or \"random\"")
@@ -303,33 +295,25 @@ function example(;n=2^7,d=3,problem_name)
 
     X = solve_multilinear_sylvester(Ds,B)
     Cx,Ux = tucker_hosvd(X; tol=1e-16)
-    X_TTN = TTN(Cx,ntuple(i->TTN(Ux[i]),d))
+    X_TTN = TTN(Cx,ntuple(i->TTN(Ux[i]),d))    
     X_TTN_trunc = rank_truncation(X_TTN,1e-10)
-    X_TTN_rest = add_TTNs((X_TTN,(@set X_TTN_trunc.X = -X_TTN_trunc.X)),1e-16)
+    # X_TTN_trunc_rest = add_TTNs((X_TTN, (@set X_TTN_trunc.X = - X_TTN_trunc.X)), 1e-16)
 
-    Xs = ntuple(n_leaves) do k
-        @set X_TTN_rest.leaves[k].X = Ds[k]*X_TTN_rest.leaves[k].X
-    end
-    residual = add_TTNs(Xs)
-    residual_err_norm = contract_TTNs(residual,residual) |> only |> sqrt
+    # lhs_X_res = apply_TTNO(Sylv_TTNO, X_TTN_trunc_rest) |> orthonormalize_ttn!
+    # trunc_rest_err_norm = norm(lhs_X_res.X)
 
-    rs = (2,34)
-    Y_TTN,errs = tucker_sylv(Ds,B_TTN,rs,residual_err_norm)
-
-    R = add_TTNs((Y_TTN,(@set X_TTN.X = -X_TTN.X)))
-    norm_R = contract_TTNs(R,R) |> only |> sqrt
-    Rs = ntuple(n_leaves) do k
-        @set R.leaves[k].X = Ds[k]*R.leaves[k].X
-    end
-    residual = add_TTNs(Rs)
-    residual_norm = contract_TTNs(residual,residual) |> only |> sqrt
-
-    Xs = ntuple(n_leaves) do k
-        @set X_TTN_trunc.leaves[k].X = Ds[k]*X_TTN_trunc.leaves[k].X
-    end
-    lhs_X = add_TTNs(Xs)
+    lhs_X = apply_TTNO(Sylv_TTNO,X_TTN_trunc)
     trunc_err = add_TTNs((lhs_X,(@set B_TTN.X = -B_TTN.X)))
-    trunc_err_norm = contract_TTNs(trunc_err,trunc_err) |> only |> sqrt
+    trunc_err_norm = norm(trunc_err.X)
+
+    @myshow X_TTN_trunc
+    println("Start")
+    rs = (2,34)
+    Y_TTN,errs = tucker_sylv((Ds,Sylv_TTNO),B_TTN,rs,trunc_err_norm,1e-10)
+
+    R = add_TTNs((Y_TTN,(@set X_TTN.X = -X_TTN.X)),1e-11)
+    residual = apply_TTNO(Sylv_TTNO, R) |> orthonormalize_ttn!
+    residual_norm = norm(residual.X) 
 
     colors = RGB.(MakiePublication.seaborn_colorblind())
     set_theme!(theme_latexfonts(), palette=(color = colors,))
@@ -348,7 +332,7 @@ function example(;n=2^7,d=3,problem_name)
     hlines!(ax1,residual_norm/n_elems,label=L"\Vert \mathcal{L}(R\,) \Vert_{s{F}}", color=colors[5])
     axislegend(ax1)#,position = :lb)
 #     name = "random"
-    save("results/tucker_$problem_name.eps",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
+    # save("results/tucker_$problem_name.eps",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
     save("results/tucker_$problem_name.pdf",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
 #     display(fig)
     # errs
@@ -383,3 +367,11 @@ function solve_multilinear_sylvester(Ais::NTuple{N,AbstractMatrix}, B::AbstractA
     return X
 end
 
+function run_all_tucker()
+    problem_set = ["random", "laplacian_dirichlet", "laplacian_periodic"]
+
+    for problem in problem_set
+        println(problem)
+        example(n=2^7,d=3,problem_name=problem)
+    end
+end
