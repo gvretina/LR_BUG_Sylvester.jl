@@ -16,4 +16,4 @@ The implementation follows the algorithmic descriptions in the paper as closely 
 ## 🏗️ Implementation Notes
 - Written entirely in **Julia**, using standard linear algebra routines and sparse matrix support.  
 - Reproduces all numerical experiments and plots from the paper.  
-- Unfortunately it is part of a WIP, and there are a lot of references towards TTNs, all implementations are included.  
+- Unfortunately it is part of a larger project which is still WIP, so the generalizing concept of Tree Tensor Networks (TTNs) is used.
