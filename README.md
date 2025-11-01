@@ -7,7 +7,7 @@ This repository provides a Julia implementation of the algorithms and numerical 
 
 ## 📘 Overview
 Sylvester-type equations appear in control theory, model reduction, and differential equations, often involving very large, sparse matrices.  
-This project reproduces and illustrates the **Low-Rank BUG method**, which iteratively constructs a low-rank approximation to the solution by following the ideas of the BUG integrator as introduced by G.Ceruti and C.Lubich in [this paper](https://doi.org/10.1007/s10543-021-00873-0).
+This project reproduces and illustrates the **Low-Rank BUG method**, which iteratively constructs a low-rank approximation to the solution by following the ideas of the BUG integrator as introduced by G.Ceruti and C.Lubich in [this work](https://doi.org/10.1007/s10543-021-00873-0).
 
 The implementation follows the algorithmic descriptions in the paper as closely as possible and replicates the numerical experiments used to evaluate convergence.
 
