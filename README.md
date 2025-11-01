@@ -1,3 +1,5 @@
+[![Build Status](https://github.com/gvretina/LR_BUG_Sylvester.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gvretina/LR_BUG_Sylvester.jl/actions/workflows/CI.yml?query=branch%3Amain)
+
 # Replicating “A Low-Rank BUG Method for Sylvester-Type Equations”
 
 This repository provides a Julia implementation of the algorithms and numerical experiments presented in  
