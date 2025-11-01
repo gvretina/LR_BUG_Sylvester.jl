@@ -180,7 +180,7 @@ function kronecker(At::AbstractArray{T}, Bt::AbstractArray{S}) where {T,S}
 end
 
 
-function n_mode_product(X::AbstractArray{T}, U::AbstractMatrix, n::Int) where T
+function n_mode_product(X::AbstractArray{T}, U::AbstractMatrix{S}, n::Int) where {T,S}
     dims = size(X)
     N = length(dims)
 #     n = n + 1
@@ -197,7 +197,8 @@ function n_mode_product(X::AbstractArray{T}, U::AbstractMatrix, n::Int) where T
 
     # Create a lazy matricized view of X along mode n.
     Xmat = matricize(X, mode)  # This returns a ModeNMatrix which is an AbstractMatrix without allocating new memory.
-    Ymat = @inbounds Matrix{T}(undef,p[1],size(Xmat,2))
+    R = promote_type(T, S)
+    Ymat = @inbounds Matrix{R}(undef,p[1],size(Xmat,2))
 
     # Compute the matrix product. This uses BLAS and no extra allocation is needed for Xmat.
 #     Ymat = U * Xmat  # Ymat has size (size(U,1), prod(dims)/dims[n])
