@@ -2,8 +2,7 @@ using LinearSolve
 using Random
 using CairoMakie, MakiePublication, Colors
 using SparseArrays
-using IncompleteLU
-
+using StructArrays
 using LinearAlgebra
 using ProgressMeter
 using FStrings

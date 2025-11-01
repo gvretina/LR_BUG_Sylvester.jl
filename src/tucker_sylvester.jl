@@ -167,8 +167,6 @@ end
 #     rs = ntuple(i->t.leaves[i].r,n_leaves)
 #     C = Array{eltype(t)}(undef,rs...)
 #     x = vec(C)
-#     # ilu_fact = ilu(A, τ = 0.01)
-#     # x .= solve(LinearProblem(A,b,KrylovJL_GMRES()),Pl=ilu_fact,abstol=1e-10,reltol=1e-10).u
 #     x .= solve(LinearProblem(A,b)).u
 #     # F = lu(A)
 #     # x .= F \ b
@@ -181,9 +179,9 @@ function solve_core(t,rhs,M,N)
 
     n_leaves = count_leaves(t)
     # C_X = t.X
-    C_B = rhs.X
+    C_B = copy(rhs.X)
     for i in 1:n_leaves
-        C_B = n_mode_product(C_B,N[i]',i)        
+        C_B = n_mode_product(C_B,Matrix(N[i]'),i)        
     end
 
     C_X = solve_multilinear_sylvester(map(transpose,M),C_B)
@@ -275,9 +273,10 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
 
     colors = RGB.(MakiePublication.seaborn_colorblind())
     set_theme!(theme_latexfonts(), palette=(color = colors,))
-    dpi = 92
+    
+    inch = 96
 
-    fig = Figure(fontsize=24,dpi=144)
+    fig = Figure(fontsize=24,size=1.5 .* (4inch,3inch))
 
     ns = length(errs)
     N = ns > 10 ? div(ns,10) : 1
@@ -292,10 +291,9 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
     hlines!(ax1,residual_norm/n_elems,label=L"\Vert \mathcal{L}(R\,) \Vert_{s{F}}", color=colors[5])
     axislegend(ax1)#,position = :lb)
 #     name = "random"
-    save("results/tucker_$problem_name.eps",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
-    save("results/tucker_$problem_name.pdf",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
-#     display(fig)
-    # errs
+    save("results/tucker_$problem_name.eps",fig)#,px_per_unit=dpi/inch)
+    save("results/tucker_$problem_name.pdf",fig)#,px_per_unit=dpi/inch)
+
     Y_TTN, errs
 end
 
@@ -305,11 +303,17 @@ function solve_multilinear_sylvester(Ais, B::AbstractArray{T}) where {T}
     eigs = [eigen(Matrix(A)) for A in Ais]
     P = [E.vectors for E in eigs]
     Λ = [E.values for E in eigs]
+    if any(!isreal(Λ))
+        P = map(StructArray,P)
+        invP = map(StructArray ∘ inv, P)
+        B̂ = StructArray(ComplexF64.(B))
+    else
+        invP = map(inv, P)
+        B̂ = copy(B)
+    end
 
-    # Transform B into eigenbasis
-    B̂ = copy(B)
     for i in 1:N
-        B̂ = n_mode_product(B̂, inv(P[i]), i)
+        B̂ = n_mode_product(B̂, invP[i], i)
     end
 
     # Elementwise divide in spectral space
@@ -342,6 +346,7 @@ function run_all_tucker()
 
     for problem in problem_set
         println(problem)
-        example_tucker(n=2^7,d=3,problem_name=problem)
+        example_tucker(n=2^7,d=3,problem_name=problem);
     end
+    nothing
 end

@@ -75,22 +75,38 @@ function tensorize(X::AbstractMatrix{T}, n::Int, dims::NTuple{M,Int}) where {T,M
     permutedims(Xres,invperm(perm))
 end
 
-function tmul!(C, A, B)
-    # Get sizes and verify compatibility.
+function mul_avx!(C, A, B)
     m, nA = size(A)
     nB, p  = size(B)
     @assert nA == nB "Inner dimensions of A and B must match for matrix multiplication."
     @assert size(C, 1) == m && size(C, 2) == p "C must have dimensions m × p to store the result."
     @assert !Base.mightalias(C, A) && !Base.mightalias(C, B) "C must not alias A or B."
-
+    R = promote_type(eltype(A),eltype(B))
     @turbo for i ∈ axes(A, 1), j ∈ axes(B, 2)
         sum = zero(eltype(C))
         for k ∈ axes(A, 2)
-            sum += A[i, k] * B[k, j]
+            sum += R(A[i, k]) * R(B[k, j])
         end
         C[i, j] = sum
     end
     return C
+end
+
+function mul_add_avx!(C, A, B, factor=1)
+    @turbo for m ∈ 1:size(A,1), n ∈ 1:size(B,2)
+        ΔCmn = zero(eltype(C))
+        for k ∈ 1:size(A,2)
+            ΔCmn += A[m,k] * B[k,n]
+        end
+        C[m,n] += factor * ΔCmn
+    end
+end
+
+function mul_avx!(C::StructArray, A::StructArray, B::StructArray)
+    mul_avx!(    C.re, A.re, B.re)     # C.re = A.re * B.re
+    mul_add_avx!(C.re, A.im, B.im, -1) # C.re = C.re - A.im * B.im
+    mul_avx!(    C.im, A.re, B.im)     # C.im = A.re * B.im
+    mul_add_avx!(C.im, A.im, B.re)     # C.im = C.im + A.im * B.re
 end
 
 function khatri_rao(A::AbstractMatrix{T}, B::AbstractMatrix{S}) where {T,S}
@@ -198,11 +214,14 @@ function n_mode_product(X::AbstractArray{T}, U::AbstractMatrix{S}, n::Int) where
     # Create a lazy matricized view of X along mode n.
     Xmat = matricize(X, mode)  # This returns a ModeNMatrix which is an AbstractMatrix without allocating new memory.
     R = promote_type(T, S)
-    Ymat = @inbounds Matrix{R}(undef,p[1],size(Xmat,2))
-
+    if typeof(X) <: StructArray
+        Ymat = @inbounds StructArray{eltype(X)}(undef,p[1],size(Xmat,2))    
+    else
+        Ymat = @inbounds Matrix{R}(undef,p[1],size(Xmat,2))
+    end
     # Compute the matrix product. This uses BLAS and no extra allocation is needed for Xmat.
 #     Ymat = U * Xmat  # Ymat has size (size(U,1), prod(dims)/dims[n])
-    tmul!(Ymat,U,Xmat)
+    mul_avx!(Ymat,U,Xmat)
     # The new dimensions are the same as X, except that the n‑th dimension is replaced by size(U,1).
 #     newdims = @inbounds ntuple(i -> i == n ? p[1] : dims[i], N)
     newdims = get_tuple(Val(N),(i,n,U,dims) -> i == n ? size(U, 1) : (@inbounds dims[i]),Int,mode,U,dims)

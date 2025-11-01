@@ -167,17 +167,17 @@ example_matrix(;n=2^7,problem="laplacian_periodic",mode=:adaptive) = begin
     N = n > 10 ? div(n,10) : 1
     v = 0:N:n |> collect
 
-    dpi = 92
+    inch = 96
     colors = RGB.(MakiePublication.seaborn_colorblind())
     set_theme!(theme_latexfonts(), palette=(color = colors,))
-    fig = Figure(fontsize=24,size=get_makie_figure_size(1024,420;dpi=dpi))#,px_per_unit=1)
+    fig = Figure(fontsize=24,size=1.5 .* (7inch,3inch))
     fig1 = fig[1,1:2]
 
     Label(fig[2,1:2],text="Iterations",padding=(0,0,0,0))
     ax1 = Axis(fig1,ylabel="Error",yscale=log10,xticks = (v, string.(v)))
     scatterlines!(ax1,0:n-1,errs/n_elems_sq,label=L"\Vert \mathcal{L}(Y\,)-B \Vert_{sF}")
-    hlines!(ax1,trunc_err/n_elems_sq,label=L"\Vert \mathcal{L}(X_r\,)-B \Vert_F", color=colors[4])
-    hlines!(ax1,residual_error/n_elems_sq,label=L"\Vert \mathcal{L}(R\,) \Vert_F", color=colors[5])
+    hlines!(ax1,trunc_err/n_elems_sq,label=L"\Vert \mathcal{L}(X_r\,)-B \Vert_{sF}", color=colors[4])
+    hlines!(ax1,residual_error/n_elems_sq,label=L"\Vert \mathcal{L}(R\,) \Vert_{sF}", color=colors[5])
     axislegend(ax1)
 
     n = minimum(size(Y))
@@ -207,9 +207,10 @@ example_matrix(;n=2^7,problem="laplacian_periodic",mode=:adaptive) = begin
     rowgap!(fig1.layout, 1, 5)
     rowgap!(fig2.layout, 1, 5)
     display(fig)
-    save("results/matrix_$problem.pdf",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
-    save("results/matrix_$problem.eps",fig,px_per_unit = 3)#,px_per_unit=dpi/96)
+    save("results/matrix_$problem.pdf",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
+    save("results/matrix_$problem.eps",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
 
+    sol, errs
 end
 
 function run_all_matrix()
@@ -221,4 +222,5 @@ function run_all_matrix()
         println(problem)
         example_matrix(n=2^7,problem=problem)
     end
+    nothing
 end
