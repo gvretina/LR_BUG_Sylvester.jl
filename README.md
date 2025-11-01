@@ -19,3 +19,42 @@ The implementation follows the algorithmic descriptions in the paper as closely 
 - Written entirely in **Julia**, using standard linear algebra routines and sparse matrix support.  
 - Reproduces all numerical experiments and plots from the paper.  
 - Unfortunately it is part of a larger project which is still WIP, so the generalizing concept of Tree Tensor Networks (TTNs) is used.
+
+## Environment setup
+To reproduce the exact environment, instantiate the Julia project:
+
+```julia
+julia --project=.
+using Pkg
+Pkg.instantiate()
+```
+
+This installs the packages recorded in `Project.toml` and `Manifest.toml`.
+
+---
+
+## Running the experiments
+
+From the Julia REPL you can run the full experiment suites:
+
+```julia
+using LR_BUG_Sylvester
+
+run_all_matrix()
+run_all_tucker()
+```
+
+To run a specific example, call the example functions. The available problem types are:
+
+- `"random"`
+- `"laplacian_periodic"`
+- `"laplacian_dirichlet"`
+
+Example:
+
+```julia
+example_matrix("laplacian_dirichlet")
+example_tucker("random")
+```
+
+Each example builds the specified test problem, runs the Low-Rank BUG method, and plots to the `results/` directory.
