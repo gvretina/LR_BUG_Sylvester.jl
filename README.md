@@ -47,7 +47,6 @@ run_all_tucker()
 To run a specific example, call the example functions. The available problem types are:
 
 - `"random"`
-- `"laplacian_periodic"`
 - `"laplacian_dirichlet"`
 
 Example:
