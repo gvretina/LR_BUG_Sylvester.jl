@@ -7,7 +7,7 @@
 end
 
 function Matrix_BUG_Sylvester(;n=2^7,
-                               problem="laplacian_periodic",
+                               problem="laplacian_dirichlet",
                                mode=:adaptive,
                                abs_err=nothing,trunc_tol=1e-10)
     m = n
