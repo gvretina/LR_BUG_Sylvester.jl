@@ -1,4 +1,11 @@
 
+@inline function kronecker_sum_sylv(A,B)
+    na = size(A,1)
+    nb = size(B,1)
+    P = kron(I(nb),A) + kron(transpose(B),I(na))
+    return P
+end
+
 function Matrix_BUG_Sylvester(;n=2^7,
                                problem="laplacian_periodic",
                                mode=:adaptive,
@@ -10,12 +17,18 @@ function Matrix_BUG_Sylvester(;n=2^7,
 
     if occursin("laplacian",problem)
         B = smooth_periodic_random_matrix(n,m,max_freq=3)
-        B = B .- mean(B)
         rb = rank(B)
 
         Is = [1:n; 1:n-1; 2:n]; Js = [1:n; 2:n; 1:n-1]; Vs = [fill(-2,n); fill(1, 2n-2)];
         A1 = sparse(Is,Js,Vs)
         if occursin("periodic",problem)
+            #WARNING THE PERIODIC LAPLACIAN HAS A ZERO EIGENVALUE
+            #THIS CASE ISN'T EXPECTED TO WORK WELL (yet does in some way?)
+
+            #This is needed for uniqueness of solution
+            B = B .- mean(B)
+            
+
             A1[1,end] = 1
             A1[end,1] = 1
         elseif occursin("dirichlet",problem)
@@ -40,7 +53,14 @@ function Matrix_BUG_Sylvester(;n=2^7,
     end
     println("rb = $(rb)")
 
-    X = sylvester(Matrix(A1),Matrix(A2)',-B)
+    if occursin("laplacian",problem)
+        P = kronecker_sum_sylv(A1,A2)
+        x = P \ vec(B)
+        X = reshape(x,n,m)
+    else
+        X = sylvester(A1,A2',-B)
+    end
+
     Ux,Sx,Vx = svd(X)
     tol = (ttol*norm(Sx))^2
     r = findfirst(x -> x < tol, reverse(cumsum(reverse(Sx.^2))))# - 1
@@ -57,29 +77,34 @@ function Matrix_BUG_Sylvester(;n=2^7,
     V = qr(rand(m,r)).Q[:,1:r]
     ru = rv = r
 
-    Q1t = U' * A1 * U
-    Q2t = V' * A2 * V
+    Q1 = U' * A1 * U
+    Q2 = V' * A2 * V
     BV = B*V
     BtU = B'*U
 
     errs = Float64[]
 
     ##### Compute error of random initial guess ######
-    coef_K = kron(I(rv),A1) + kron(Q2t, I(n))
+    coef_K = kronecker_sum_sylv(A1,Q2')
     K = reshape(coef_K \ vec(BV),n,ru)
-    coef_L = kron(I(ru),A2) + kron(Q1t, I(m))
+    coef_L = kronecker_sum_sylv(A2,Q1')
     L = reshape(coef_L \ vec(BtU),m,rv)
     U = qr(K) |> Matrix
     V = qr(L) |> Matrix
 
-    Q1t = U' * A1 * U
+    Q1 = U' * A1 * U
     BtU = B'*U
-    Q2t = V' * A2 * V
+    Q2 = V' * A2 * V
     BV = B*V
     UtBV = U' * BV
 
-    coef_S = kron(I(rv),Q1t) + kron(Q2t,I(ru))
-    S = reshape(pinv(coef_S) * vec(UtBV),ru,rv)
+    if issparse(A1)
+        coef_S = kronecker_sum_sylv(Q1,Q2')
+        vecS = coef_S \ vec(UtBV)
+        S = reshape(vecS,ru,rv)
+    else
+        S = sylvester(Q1,Q2',-UtBV)
+    end
     Y = U*S*V'
     err = norm(A1*Y + Y*A2'- B)
     push!(errs,err)
@@ -88,15 +113,24 @@ function Matrix_BUG_Sylvester(;n=2^7,
     p = Progress(max_iter)
 
     for i in 1:max_iter
-        Q1t = U' * A1 * U
-        Q2t = V' * A2 * V
+        Q1 = U' * A1 * U
+        Q2 = V' * A2 * V
         BV = B*V
         BtU = B'*U
 
-        coef_K = kron(I(rv),A1) + kron(Q2t, I(n))
-        K = reshape(coef_K \ vec(BV),n,ru)
-        coef_L = kron(I(ru),A2) + kron(Q1t, I(m))
-        L = reshape(coef_L \ vec(BtU),m,rv)
+        if issparse(A1)
+            K = sylvester_sparse_dense(A1,Q2',BV)
+        else
+            coef_K = kronecker_sum_sylv(A1,Q2')
+            K = reshape(coef_K \ vec(BV),n,ru)
+        end
+
+        if issparse(A2)
+            L = sylvester_sparse_dense(A2,Q1',BtU)
+        else
+            coef_L = kronecker_sum_sylv(A2,Q1')
+            L = reshape(coef_L \ vec(BtU),m,rv)
+        end
 
         if mode == :fixed
             U, Ru = qr(K)#[K U])
@@ -110,14 +144,15 @@ function Matrix_BUG_Sylvester(;n=2^7,
         U = U[:,1:ru]
         V = V[:,1:rv]
 
-        Q1t = U' * A1 * U
+        Q1 = U' * A1 * U
         BtU = B'*U
-        Q2t = V' * A2 * V
+        Q2 = V' * A2 * V
         BV = B*V
         UtBV = U' * BV
 
-        coef_S = kron(I(rv),Q1t) + kron(Q2t,I(ru))
-        S = reshape(pinv(coef_S) * vec(UtBV),ru,rv)
+        coef_S = kronecker_sum_sylv(Q1,Q2')
+        # S = sylvester(Q1t,Q2t',-UtBV)
+        S = reshape((coef_S) \ vec(UtBV),ru,rv)
         P,Σ,Q = svd(S)
 
         if mode == :fixed
@@ -147,7 +182,7 @@ function Matrix_BUG_Sylvester(;n=2^7,
     return (U,S,V), errs, B, (A1,A2), X
 end
 
-example_matrix(;n=2^7,problem="laplacian_periodic",mode=:adaptive) = begin
+example_matrix(;n=2^7,problem="laplacian",mode=:adaptive) = begin
     n_elems_sq = n
     trunc_tol = 1e-10
     sol,errs,B,As,X = Matrix_BUG_Sylvester(n=n,problem=problem,mode=mode,trunc_tol=trunc_tol);
@@ -207,8 +242,8 @@ example_matrix(;n=2^7,problem="laplacian_periodic",mode=:adaptive) = begin
     rowgap!(fig1.layout, 1, 5)
     rowgap!(fig2.layout, 1, 5)
     display(fig)
-    save("results/matrix_$problem.pdf",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
-    save("results/matrix_$problem.eps",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
+    save("results/matrix_$(problem)_$n.pdf",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
+    save("results/matrix_$(problem)_$n.eps",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
 
     sol, errs
 end
@@ -216,11 +251,12 @@ end
 function run_all_matrix()
 
     Random.seed!(1)
-    problem_set = ["random", "laplacian_dirichlet", "laplacian_periodic"]
+    problem_set = ["random", "laplacian_dirichlet"]
 
     for problem in problem_set
         println(problem)
         example_matrix(n=2^7,problem=problem)
     end
+    example_matrix(n=2^11,problem="laplacian_dirichlet")
     nothing
 end

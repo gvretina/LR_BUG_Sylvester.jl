@@ -104,3 +104,36 @@ function smooth_periodic_random_array(sizes::NTuple{N,Int}, x;
 
     return A
 end
+
+function sylvester_sparse_dense(A::SparseMatrixCSC, B::AbstractMatrix, C::AbstractMatrix)
+    n, m = size(C)
+    @assert size(A,1) == size(A,2) == n "A must be square and match C's row dimension"
+    @assert size(B,1) == size(B,2) == m "B must be square and match C's column dimension"
+
+    # Schur decomposition of small dense B
+    sch = schur(B)        # B = Q*T*Q'
+    T = sch.T
+    Q = sch.Z
+
+    # Transform right-hand side
+    Ctilde = C * Q
+
+    Y = zeros(eltype(A), n, m)
+
+    # Solve column by column
+    for j in 1:m
+        rhs = Ctilde[:, j]
+        # subtract contributions from previous columns (since T is upper triangular)
+        for k in 1:j-1
+            rhs -= Y[:, k] * T[k, j]
+        end
+        # Solve (A + T[j,j]*I) * y_j = rhs
+        M = A + T[j,j] * I
+        y = M \ rhs   # sparse direct or iterative solve
+        Y[:, j] = y
+    end
+
+    # Transform back
+    X = Y * Q'
+    return X
+end

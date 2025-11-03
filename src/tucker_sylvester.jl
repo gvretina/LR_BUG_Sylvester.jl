@@ -123,19 +123,19 @@ function solve_basis(t,rhs,Ak,Qk,M,N,k,rs=nothing)
         r2 = size(Rk,2)
     end
 
-    #Ax=b formulation
-    A = kron(I(size(Pk,2)),Ak) + kron(Pk',I(size(Ak,2))) |> sparse
-    b = rhs.leaves[k].X * matricize(rhs.X,k) * Rk |> vec
+    B = rhs.leaves[k].X * matricize(rhs.X,k) * Rk
 
-    # Yk = Array{eltype(t)}(undef, size(Uk,1), r2)
-    # x = vec(Yk)
-    #do this elsewhere too, simpleGMRES might be better
-    u = solve(LinearProblem(A,b)).u
-    Yk = reshape(u,size(Uk,1),:)
-    # #@myshow size(u)
-    # #@myshow size(x)
-    # x .= u
-    #    x .= cg(A,b) ### probably should be iterative, might want to look into LinearSolve
+    if issparse(Ak)
+        Yk = sylvester_sparse_dense(Ak,Pk,B)
+    else
+        #Ax=b formulation
+        A = kron(I(size(Pk,2)),Ak) + kron(Pk',I(size(Ak,2))) |> sparse
+        b = B |> vec
+
+        u = solve(LinearProblem(A,b)).u
+        Yk = reshape(u,size(Uk,1),:)
+    end
+        
     Uk_new, Rn = qr([Yk Uk])
 
     r = rank(Rn)
@@ -209,7 +209,7 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
         Ds = ntuple(i->D, d)
         Cb, Ub = tucker_hosvd(B; tol=1e-12)
         B_TTN = TTN(Cb, ntuple(i->TTN(Ub[i]), d))
-        @myshow B_TTN
+
         Sylv_TTNO = Sylvester_TTNO(B_TTN,Ds)
 
     elseif problem_name == "laplacian_dirichlet"
@@ -253,18 +253,12 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
     trunc_tol = 1e-10
 
     X_TTN_trunc = rank_truncation(X_TTN,trunc_tol)
-    # X_TTN_trunc_rest = add_TTNs((X_TTN, (@set X_TTN_trunc.X = - X_TTN_trunc.X)), 1e-16)
-
-    # lhs_X_res = apply_TTNO(Sylv_TTNO, X_TTN_trunc_rest) |> orthonormalize_ttn!
-    # trunc_rest_err_norm = norm(lhs_X_res.X)
 
     lhs_X = apply_TTNO(Sylv_TTNO,X_TTN_trunc)
     trunc_err = add_TTNs((lhs_X,(@set B_TTN.X = -B_TTN.X)))
     trunc_err_norm = norm(trunc_err.X)
 
-    # @myshow X_TTN_trunc
-    # println("Start")
-    rs = (2,34)
+    rs = (2,div(n,4))
     Y_TTN,errs = Tucker_BUG_Sylvester((Ds,Sylv_TTNO),B_TTN,rs,trunc_err_norm,trunc_tol)
 
     R = add_TTNs((Y_TTN,(@set X_TTN.X = -X_TTN.X)),1e-11)
@@ -291,8 +285,8 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
     hlines!(ax1,residual_norm/n_elems,label=L"\Vert \mathcal{L}(R\,) \Vert_{s{F}}", color=colors[5])
     axislegend(ax1)#,position = :lb)
 #     name = "random"
-    save("results/tucker_$problem_name.eps",fig)#,px_per_unit=dpi/inch)
-    save("results/tucker_$problem_name.pdf",fig)#,px_per_unit=dpi/inch)
+    save("results/tucker_$(problem_name)_$n.eps",fig)#,px_per_unit=dpi/inch)
+    save("results/tucker_$(problem_name)_$n.pdf",fig)#,px_per_unit=dpi/inch)
 
     Y_TTN, errs
 end
@@ -342,7 +336,7 @@ end
 function run_all_tucker()
 
     Random.seed!(1)
-    problem_set = ["random", "laplacian_dirichlet", "laplacian_periodic"]
+    problem_set = ["random", "laplacian_dirichlet"]
 
     for problem in problem_set
         println(problem)
