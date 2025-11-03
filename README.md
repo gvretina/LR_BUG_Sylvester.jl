@@ -52,8 +52,8 @@ To run a specific example, call the example functions. The available problem typ
 Example:
 
 ```julia
-example_matrix("laplacian_dirichlet")
-example_tucker("random")
+example_matrix(n=2^7,problem="laplacian",mode=:adaptive)
+example_tucker(n=2^7,d=3,problem_name="laplacian_dirichlet")
 ```
 
 Each example builds the specified test problem, runs the Low-Rank BUG method, and plots to the `results/` directory.
