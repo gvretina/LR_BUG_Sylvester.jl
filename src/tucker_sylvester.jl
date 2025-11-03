@@ -189,7 +189,7 @@ function solve_core(t,rhs,M,N)
     return TTN(C_X, t.leaves)
 end
 
-function example_tucker(;n=2^7,d=3,problem_name="laplacian_periodic")
+function example_tucker(;n=2^7,d=3,problem_name="laplacian_dirichlet")
     if problem_name == "laplacian_periodic"
         xmin = 0
         xmax = 4π
