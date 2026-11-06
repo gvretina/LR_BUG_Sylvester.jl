@@ -1,0 +1,1 @@
+tensor convection_diffusion TBRK n=4096: stagnated, 23 its, rank 55, residual 7.00e-09, 47.712 s

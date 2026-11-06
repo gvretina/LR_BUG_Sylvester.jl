@@ -1,0 +1,7 @@
+tensor laplacian TBRK n=64: converged, 14 its, rank 33, residual 1.27e-12, 0.167 s
+tensor laplacian TBRK n=128: converged, 25 its, rank 38, residual 9.52e-11, 0.430 s
+tensor laplacian TBRK n=256: converged, 23 its, rank 43, residual 1.06e-11, 1.240 s
+tensor laplacian TBRK n=512: converged, 26 its, rank 47, residual 2.83e-11, 2.757 s
+tensor laplacian TBRK n=1024: converged, 20 its, rank 51, residual 9.45e-11, 2.764 s
+tensor laplacian TBRK n=2048: stagnated, 25 its, rank 54, residual 3.34e-10, 6.080 s
+tensor laplacian TBRK n=4096: stagnated, 25 its, rank 56, residual 1.44e-09, 6.809 s

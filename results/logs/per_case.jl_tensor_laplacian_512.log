@@ -1,0 +1,3 @@
+exact: ranks (47, 47, 47), truncated-exact residual 2.854e-11
+BUG: converged, 4 its, ranks (47, 47, 47), residual 2.792e-11
+TBRK: converged, 26 its, ranks (47, 47, 47), residual 2.834e-11

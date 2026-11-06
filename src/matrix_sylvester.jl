@@ -1,3 +1,4 @@
+using FFTW
 
 @inline function kronecker_sum_sylv(A,B)
     na = size(A,1)
@@ -6,12 +7,60 @@
     return P
 end
 
+function solve_sylv(Ais, B::AbstractArray{T}) where {T}
+    N = length(Ais)
+    tol=1e-10
+    sizes = size(B)
+    eigs = [eigen(Matrix(A)) for A in Ais]
+    P = [E.vectors for E in eigs]
+    Λ = [E.values for E in eigs]
+    if any(!isreal(Λ))
+        P = map(P) do p
+            StructArray(ComplexF64.(p))
+        end
+        invP = map(StructArray ∘ inv, P)
+        B̂ = StructArray(ComplexF64.(B))
+    else
+        invP = map(inv, P)
+        B̂ = copy(B)
+    end
+
+    B̂ = invP[1] * B̂ * invP[2]'
+
+    # Elementwise divide in spectral space
+    X = similar(B̂)
+    for I in CartesianIndices(sizes)
+        denom = sum(Λ[i][I[i]] for i in 1:N)
+#             display(denom)
+        if abs(denom) < tol
+            X[I] = zero(eltype(X))
+        else
+            X[I] = B̂[I] / denom
+        end
+    end
+
+    # Transform back
+
+    X = P[1]*X*P[2]'
+
+    if eltype(X) <: Complex && !(T <: Complex)
+        if any(abs.(imag(X)) .> tol)
+            throw("Nope")
+        else
+            X = real(X)
+        end
+    end
+
+    return X
+end
+
 function Matrix_BUG_Sylvester(;n=2^7,
                                problem="laplacian_dirichlet",
                                mode=:adaptive,
                                abs_err=nothing,trunc_tol=1e-10)
     m = n
     x1 = LinRange(0,4pi,n+1)[begin:end-1]
+    k1 = fftfreq(n)*(n)*2pi/(x1[end]+x1[2]-2x1[1])
     x2 = LinRange(0,4pi,m+1)[begin:end-1]
     ttol = trunc_tol
 
@@ -21,13 +70,13 @@ function Matrix_BUG_Sylvester(;n=2^7,
 
         Is = [1:n; 1:n-1; 2:n]; Js = [1:n; 2:n; 1:n-1]; Vs = [fill(-2,n); fill(1, 2n-2)];
         A1 = sparse(Is,Js,Vs)
+
         if occursin("periodic",problem)
             #WARNING THE PERIODIC LAPLACIAN HAS A ZERO EIGENVALUE
             #THIS CASE ISN'T EXPECTED TO WORK WELL (yet does in some way?)
 
             #This is needed for uniqueness of solution
             B = B .- mean(B)
-            
 
             A1[1,end] = 1
             A1[end,1] = 1
@@ -38,7 +87,8 @@ function Matrix_BUG_Sylvester(;n=2^7,
         end
         A2 = copy(A1) ./ x2[2]^2
         A1 = A1 ./ x1[2]^2
-
+#         A1 = ifft(I(n),1) * Diagonal(-k1.^2) * fft(I(n),1) |> real
+#         A2 = copy(A1)
     elseif problem == "random"
         rb = 7
         B = rand(n,rb)*rand(rb,m) #B*B'
@@ -53,13 +103,18 @@ function Matrix_BUG_Sylvester(;n=2^7,
     end
     println("rb = $(rb)")
 
-    if occursin("laplacian",problem)
-        P = kronecker_sum_sylv(A1,A2)
-        x = P \ vec(B)
-        X = reshape(x,n,m)
-    else
-        X = sylvester(A1,A2',-B)
-    end
+#     if occursin("laplacian",problem)
+#         P = kronecker_sum_sylv(A1,A2)
+#         x = P \ vec(B)
+#         X = reshape(x,n,m)
+#     else
+#         X = sylvester(A1,A2',-B)
+#     end
+
+#     X = solve_sylv((A1,A2),B)
+    Xhat = fft(B) ./ (-k1.^2 .- k1'.^2)
+    Xhat[1] = zero(eltype(Xhat))
+    X = real(ifft(Xhat))
 
     Ux,Sx,Vx = svd(X)
     tol = (ttol*norm(Sx))^2
@@ -98,13 +153,14 @@ function Matrix_BUG_Sylvester(;n=2^7,
     BV = B*V
     UtBV = U' * BV
 
-    if issparse(A1)
-        coef_S = kronecker_sum_sylv(Q1,Q2')
-        vecS = coef_S \ vec(UtBV)
-        S = reshape(vecS,ru,rv)
-    else
-        S = sylvester(Q1,Q2',-UtBV)
-    end
+#     if issparse(A1)
+#         coef_S = kronecker_sum_sylv(Q1,Q2')
+#         vecS = coef_S \ vec(UtBV)
+#         S = reshape(vecS,ru,rv)
+#     else
+#         S = sylvester(Q1,Q2',-UtBV)
+#     end
+    S = solve_sylv((Q1,Q2),UtBV)
     Y = U*S*V'
     err = norm(A1*Y + Y*A2'- B)
     push!(errs,err)
@@ -119,14 +175,16 @@ function Matrix_BUG_Sylvester(;n=2^7,
         BtU = B'*U
 
         if issparse(A1)
-            K = sylvester_sparse_dense(A1,Q2',BV)
+#             K = sylvester_sparse_dense(A1,Q2',BV)
+            K = solve_sylv((A1,Q2), BV)
         else
             coef_K = kronecker_sum_sylv(A1,Q2')
             K = reshape(coef_K \ vec(BV),n,ru)
         end
 
         if issparse(A2)
-            L = sylvester_sparse_dense(A2,Q1',BtU)
+#             L = sylvester_sparse_dense(A2,Q1',BtU)
+            K = solve_sylv((A2,Q1), BtU)
         else
             coef_L = kronecker_sum_sylv(A2,Q1')
             L = reshape(coef_L \ vec(BtU),m,rv)
@@ -141,8 +199,8 @@ function Matrix_BUG_Sylvester(;n=2^7,
             ru = rank(Ru)
             rv = rank(Rv)
         end
-        U = U[:,1:ru]
-        V = V[:,1:rv]
+        U = Matrix(U)[:,1:ru]
+        V = Matrix(V)[:,1:rv]
 
         Q1 = U' * A1 * U
         BtU = B'*U
@@ -152,7 +210,8 @@ function Matrix_BUG_Sylvester(;n=2^7,
 
         coef_S = kronecker_sum_sylv(Q1,Q2')
         # S = sylvester(Q1t,Q2t',-UtBV)
-        S = reshape((coef_S) \ vec(UtBV),ru,rv)
+#         S = reshape((coef_S) \ vec(UtBV),ru,rv)
+        S = solve_sylv((Q1,Q2), UtBV)
         P,Σ,Q = svd(S)
 
         if mode == :fixed
@@ -169,6 +228,17 @@ function Matrix_BUG_Sylvester(;n=2^7,
         S = Diagonal(Σ[1:r])
         ru = rv = r
         Y = U*S*V'
+
+        if occursin("periodic",problem)
+#             @show mean(Y)
+            Y .= Y .- mean(Y)
+            U,S,V = svd(Y)
+            r = rank(diagm(S))
+            U = U[:,1:r]
+            S = Diagonal(S[1:r])
+            V = V[:,1:r]
+        end
+
         err = norm(A1*Y + Y*A2'- B)
         push!(errs,err)
 
@@ -193,6 +263,17 @@ example_matrix(;n=2^7,problem="laplacian",mode=:adaptive) = begin
     sY = diag(sol[2])
     r = length(sY)
     Xtr = U[:,1:r]*Diagonal(sX[1:r])*V[:,1:r]'
+
+#     Xx = sylvester(Matrix(As[1]),Matrix(As[2])',-B)
+    Xx = solve_sylv((As[1],As[2]),B)
+    sxx = svd(Xx).S
+
+
+    @show size(X)
+    @show size(Xx)
+    @show size(sX)
+    @show size(sxx)
+    @show norm(sX .- sxx)
 
     R = X - Y
     residual_error = norm(As[1]*R + R*As[2]')
@@ -237,13 +318,17 @@ example_matrix(;n=2^7,problem="laplacian",mode=:adaptive) = begin
     hlines!(ax21,tol/sX[1],label=L"\vartheta", color=colors[3])
     xticks = [1, div(r,2), r]
     ax22 = Axis(fig2[1,2], ylabel=L"|\sigma_X - \sigma_Y\,|",yscale=log10, xticks=xticks)
-    scatterlines!(ax22,abs.(sX[1:r].-sY),markersize=14)
+    scatterlines!(ax22,abs.(sX[1:r] .-sxx[1:r]) .+ eps(),markersize=14,label="Exact-Direct")
+    scatterlines!(ax22,abs.(sX[1:r].-sY) .+ eps(),markersize=14, label="Exact-BUG",marker='⨯')
+    scatterlines!(ax22,abs.(sxx[1:r] .-sY) .+ eps(),markersize=14,label="Direct-BUG")
+#     @show abs.(sX[1:r].-sY) .+ eps()
+#     axislegend(ax22)
     axislegend(ax21)
     rowgap!(fig1.layout, 1, 5)
     rowgap!(fig2.layout, 1, 5)
     display(fig)
-    save("results/matrix_$(problem)_$n.pdf",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
-    save("results/matrix_$(problem)_$n.eps",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
+#     save("results/matrix_$(problem)_$n.pdf",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
+#     save("results/matrix_$(problem)_$n.eps",fig)#,px_per_unit = 3)#,px_per_unit=dpi/96)
 
     sol, errs
 end

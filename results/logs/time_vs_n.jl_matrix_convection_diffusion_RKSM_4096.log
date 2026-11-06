@@ -1,0 +1,1 @@
+matrix convection_diffusion RKSM n=4096: stagnated, 25 its, rank 51, residual 6.33e-09, 2.866 s

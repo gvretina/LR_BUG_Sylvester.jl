@@ -1,0 +1,7 @@
+tensor laplacian BUG n=64: converged, 3 its, rank 32, residual 1.04e-12, 0.039 s
+tensor laplacian BUG n=128: converged, 3 its, rank 38, residual 1.70e-11, 0.052 s
+tensor laplacian BUG n=256: converged, 4 its, rank 43, residual 5.53e-12, 0.185 s
+tensor laplacian BUG n=512: converged, 4 its, rank 47, residual 2.79e-11, 0.232 s
+tensor laplacian BUG n=1024: converged, 4 its, rank 51, residual 8.85e-11, 0.319 s
+tensor laplacian BUG n=2048: stagnated, 6 its, rank 54, residual 3.30e-10, 1.032 s
+tensor laplacian BUG n=4096: stagnated, 6 its, rank 56, residual 1.37e-09, 1.411 s

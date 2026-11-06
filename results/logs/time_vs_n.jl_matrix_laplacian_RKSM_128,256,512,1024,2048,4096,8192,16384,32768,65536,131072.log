@@ -1,0 +1,11 @@
+matrix laplacian RKSM n=128: converged, 12 its, rank 31, residual 1.47e-11, 0.084 s
+matrix laplacian RKSM n=256: converged, 15 its, rank 35, residual 4.79e-11, 0.190 s
+matrix laplacian RKSM n=512: converged, 20 its, rank 37, residual 6.40e-11, 0.589 s
+matrix laplacian RKSM n=1024: stagnated, 23 its, rank 39, residual 1.30e-10, 0.770 s
+matrix laplacian RKSM n=2048: stagnated, 24 its, rank 39, residual 7.69e-10, 0.976 s
+matrix laplacian RKSM n=4096: stagnated, 26 its, rank 39, residual 2.24e-09, 1.479 s
+matrix laplacian RKSM n=8192: stagnated, 27 its, rank 39, residual 1.02e-08, 2.104 s
+matrix laplacian RKSM n=16384: stagnated, 28 its, rank 39, residual 3.81e-08, 3.232 s
+matrix laplacian RKSM n=32768: stagnated, 31 its, rank 39, residual 1.76e-07, 6.742 s
+matrix laplacian RKSM n=65536: stagnated, 28 its, rank 39, residual 4.31e-07, 10.751 s
+matrix laplacian RKSM n=131072: stagnated, 29 its, rank 38, residual 1.34e-06, 24.065 s

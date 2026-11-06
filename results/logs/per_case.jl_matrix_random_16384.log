@@ -1,0 +1,3 @@
+BUG: converged, 3 its, rank 37, residual 6.222e-14
+RKSM: converged, 5 its, rank 37, residual 6.532e-13
+exact: rank 44, truncated-exact residual 1.994e-13

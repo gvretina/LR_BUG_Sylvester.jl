@@ -1,0 +1,1 @@
+matrix convection_diffusion BUG n=4096: stagnated, 5 its, rank 51, residual 6.29e-09, 0.415 s

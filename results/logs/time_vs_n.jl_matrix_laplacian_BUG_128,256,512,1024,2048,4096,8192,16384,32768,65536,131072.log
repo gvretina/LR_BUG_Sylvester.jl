@@ -1,0 +1,11 @@
+matrix laplacian BUG n=128: converged, 3 its, rank 31, residual 6.36e-12, 0.008 s
+matrix laplacian BUG n=256: converged, 3 its, rank 35, residual 8.66e-11, 0.014 s
+matrix laplacian BUG n=512: converged, 4 its, rank 37, residual 6.42e-11, 0.039 s
+matrix laplacian BUG n=1024: stagnated, 6 its, rank 39, residual 1.29e-10, 0.117 s
+matrix laplacian BUG n=2048: stagnated, 7 its, rank 39, residual 7.71e-10, 0.236 s
+matrix laplacian BUG n=4096: stagnated, 6 its, rank 39, residual 2.24e-09, 0.330 s
+matrix laplacian BUG n=8192: stagnated, 5 its, rank 39, residual 1.03e-08, 0.396 s
+matrix laplacian BUG n=16384: stagnated, 6 its, rank 39, residual 3.88e-08, 0.822 s
+matrix laplacian BUG n=32768: stagnated, 6 its, rank 39, residual 1.78e-07, 1.581 s
+matrix laplacian BUG n=65536: stagnated, 6 its, rank 39, residual 4.55e-07, 3.279 s
+matrix laplacian BUG n=131072: stagnated, 7 its, rank 38, residual 1.30e-06, 9.387 s

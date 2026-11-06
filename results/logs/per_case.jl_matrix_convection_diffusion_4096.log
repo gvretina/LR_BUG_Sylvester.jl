@@ -1,0 +1,3 @@
+BUG: stagnated, 5 its, rank 51, residual 6.289e-09
+RKSM: stagnated, 25 its, rank 51, residual 6.329e-09
+exact: rank 51, truncated-exact residual 6.399e-09

@@ -1,3 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 LR_BUG_Sylvester = "149d6231-eb5a-4cbf-8ed9-4e2ab481a44a"
+
+[compat]
+Documenter = "1"

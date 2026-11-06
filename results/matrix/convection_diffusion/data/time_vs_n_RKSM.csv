@@ -1,0 +1,2 @@
+n,status,iters,rank,workdim,residual,time
+4096,stagnated,25,51,200,6.328793551386646e-9,2.866151508

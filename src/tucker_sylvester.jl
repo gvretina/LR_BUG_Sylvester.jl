@@ -50,6 +50,7 @@ function Tucker_BUG_Sylvester(operator_tuple,rhs,rs=nothing,abs_tol=1e-6, trunc_
     iter = 0
     prev_err = errs[1]
     while iter < max_iter
+        @show size(t.X)
         iter += 1
         for k in 1:n_leaves
             r = size(t.X,k)
@@ -206,6 +207,9 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_dirichlet")
         A1[1, end] = 1
         A1[end, 1] = 1
         D = A1 / dx^2
+        k = fftfreq(n) * (n) * 2pi / (x[end] + x[2] - 2x[1])
+        @show k[2]^2
+        D = ifft(I(n), 1) * Diagonal(-k .^ 2) * fft(I(n), 1) |> real
         Ds = ntuple(i->D, d)
         Cb, Ub = tucker_hosvd(B; tol=1e-12)
         B_TTN = TTN(Cb, ntuple(i->TTN(Ub[i]), d))
@@ -285,13 +289,13 @@ function example_tucker(;n=2^7,d=3,problem_name="laplacian_dirichlet")
     hlines!(ax1,residual_norm/n_elems,label=L"\Vert \mathcal{L}(R\,) \Vert_{s{F}}", color=colors[5])
     axislegend(ax1)#,position = :lb)
 #     name = "random"
-    save("results/tucker_$(problem_name)_$n.eps",fig)#,px_per_unit=dpi/inch)
-    save("results/tucker_$(problem_name)_$n.pdf",fig)#,px_per_unit=dpi/inch)
-
+#     save("results/tucker_$(problem_name)_$n.eps",fig)#,px_per_unit=dpi/inch)
+#     save("results/tucker_$(problem_name)_$n.pdf",fig)#,px_per_unit=dpi/inch)
+display(fig)
     Y_TTN, errs
 end
 
-function solve_multilinear_sylvester(Ais, B::AbstractArray{T}) where {T}
+function solve_multilinear_sylvester(Ais, B::AbstractArray{T}, tol=1e-12) where {T}
     N = length(Ais)
     sizes = size(B)
     eigs = [eigen(Matrix(A)) for A in Ais]
@@ -312,18 +316,36 @@ function solve_multilinear_sylvester(Ais, B::AbstractArray{T}) where {T}
 
     # Elementwise divide in spectral space
     X = similar(B̂)
+    minn = 1
     for I in CartesianIndices(sizes)
         denom = sum(Λ[i][I[i]] for i in 1:N)
-        X[I] = B̂[I] / denom
+            if abs(denom) < minn
+                minn = abs(denom)
+            end
+        if abs(denom) < tol
+            X[I] = zero(eltype(X))
+        else
+            X[I] = B̂[I] / denom
+        end
     end
 
+        sums = []
+    for I in CartesianIndices(sizes)
+        denom = sum(Λ[i][I[i]] for i in 1:N)
+            append!(sums,denom)
+    end
+        display(sums)
+        @show minn
+        throw("stop")
     # Transform back
     for i in 1:N
         X = n_mode_product(X, P[i], i)
     end
 
+
     if eltype(X) <: Complex && !(T <: Complex)
         if any(abs.(imag(X)) .> 1e-15) 
+            display(X)
             throw("Nope")
         else
             X = real(X)

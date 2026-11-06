@@ -1,0 +1,3 @@
+exact: ranks (28, 28, 28), truncated-exact residual 4.447e-15
+BUG: converged, 2 its, ranks (28, 28, 28), residual 3.781e-12
+TBRK: converged, 2 its, ranks (28, 28, 28), residual 2.334e-13

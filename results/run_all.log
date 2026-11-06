@@ -1,0 +1,54 @@
+[cores 0-3] per_case.jl matrix random 4096
+[cores 14-17] per_case.jl matrix laplacian 4096
+[cores 14-17] per_case.jl matrix laplacian 16384
+[cores 0-3] per_case.jl matrix random 16384
+[cores 14-17] error_vs_time.jl matrix laplacian 4096
+[cores 14-17] error_vs_time.jl matrix laplacian 16384
+[cores 14-17] time_vs_n.jl matrix laplacian BUG 128,256,512,1024,2048,4096,8192,16384,32768,65536,131072
+[cores 0-3] error_vs_time.jl matrix random 4096
+[cores 0-3] error_vs_time.jl matrix random 16384
+[cores 14-17] time_vs_n.jl matrix laplacian RKSM 128,256,512,1024,2048,4096,8192,16384,32768,65536,131072
+[cores 14-17] time_vs_n.jl tensor laplacian BUG 64,128,256,512,1024,2048,4096
+[cores 14-17] time_vs_n.jl tensor laplacian TBRK 64,128,256,512,1024,2048,4096
+[cores 14-17] time_vs_n.jl tensor random BUG 64,128,256,512,1024,2048,4096
+[cores 14-17] time_vs_n.jl tensor random TBRK 64,128,256,512,1024,2048,4096
+[cores 0-3] error_vs_time.jl tensor convection_diffusion 4096
+[cores 14-17] error_vs_time.jl tensor laplacian 512
+[cores 14-17] error_vs_time.jl tensor laplacian 4096
+[cores 14-17] error_vs_time.jl tensor random 512
+[cores 14-17] error_vs_time.jl tensor random 4096
+[cores 14-17] per_case.jl tensor laplacian 512
+[cores 14-17] per_case.jl tensor laplacian 4096
+[cores 14-17] per_case.jl tensor random 512
+[cores 14-17] per_case.jl tensor random 4096
+[cores 14-17] per_case.jl matrix convection_diffusion 4096
+[cores 14-17] error_vs_time.jl matrix convection_diffusion 4096
+[cores 14-17] time_vs_n.jl matrix convection_diffusion BUG 4096
+[cores 14-17] time_vs_n.jl matrix convection_diffusion RKSM 4096
+[cores 14-17] per_case.jl tensor convection_diffusion 4096
+[cores 14-17] time_vs_n.jl tensor convection_diffusion BUG 4096
+[cores 14-17] time_vs_n.jl tensor convection_diffusion TBRK 4096
+┌ Warning: Assignment to `d` in soft scope is ambiguous because a global variable by the same name exists: `d` will be treated as a new local. Disambiguate by using `local d` to suppress this warning or `global d` to assign to the existing global variable.
+└ @ ~/LowRankTrees/dev/bug_sylvester/paper/scripts/plot.jl:142
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/laplacian/figures/fig_matrix_laplacian_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/laplacian/figures/fig_matrix_laplacian_n16384
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/random/figures/fig_matrix_random_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/random/figures/fig_matrix_random_n16384
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/laplacian/figures/fig_tucker_laplacian_n512
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/laplacian/figures/fig_tucker_laplacian_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/random/figures/fig_tucker_random_n512
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/random/figures/fig_tucker_random_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/convection_diffusion/figures/fig_matrix_convection_diffusion_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/convection_diffusion/figures/fig_tucker_convection_diffusion_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/figures/fig_matrix_error_vs_time
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/figures/fig_tensor_error_vs_time
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/laplacian/figures/fig_matrix_laplacian_error_vs_time_n16384
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/convection_diffusion/figures/fig_matrix_convection_diffusion_error_vs_time_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/random/figures/fig_matrix_random_error_vs_time_n16384
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/laplacian/figures/fig_tensor_laplacian_error_vs_time_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/convection_diffusion/figures/fig_tensor_convection_diffusion_error_vs_time_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/random/figures/fig_tensor_random_error_vs_time_n4096
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/matrix/laplacian/figures/fig_comparison_2d
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/laplacian/figures/fig_comparison_3d
+/home/vretinaris/LowRankTrees/dev/bug_sylvester/paper/results/tensor/random/figures/fig_comparison_3d_random
+EXIT 0

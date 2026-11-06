@@ -1,0 +1,7 @@
+tensor random BUG n=64: converged, 2 its, rank 28, residual 1.26e-12, 0.019 s
+tensor random BUG n=128: converged, 2 its, rank 28, residual 2.00e-11, 0.033 s
+tensor random BUG n=256: converged, 2 its, rank 28, residual 4.01e-11, 0.038 s
+tensor random BUG n=512: converged, 2 its, rank 28, residual 3.78e-12, 0.053 s
+tensor random BUG n=1024: converged, 3 its, rank 28, residual 3.71e-14, 0.169 s
+tensor random BUG n=2048: converged, 3 its, rank 29, residual 3.55e-13, 0.299 s
+tensor random BUG n=4096: converged, 3 its, rank 29, residual 1.62e-13, 0.799 s
